@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FinVault – Personal Wealth OS</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/recharts/2.8.0/Recharts.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Outfit:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #070B14; color: #F0EAD6; font-family: 'Outfit', sans-serif; }
+    ::-webkit-scrollbar { width: 6px; } ::-webkit-scrollbar-track { background: #070B14; } ::-webkit-scrollbar-thumb { background: rgba(255,193,80,0.2); border-radius: 3px; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+    const { useState, useRef, useCallback, useEffect } = React;
+    const { AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } = Recharts;
+
+    const C = {
+      bg: "#070B14", bgCard: "rgba(255,255,255,0.028)", bgHover: "rgba(255,255,255,0.045)",
+      border: "rgba(255,193,80,0.13)", borderHover: "rgba(255,193,80,0.28)",
+      gold: "#FFC150", goldDim: "#C8924A", goldGlow: "rgba(255,193,80,0.15)",
+      teal: "#3ECFB2", red: "#FF5E6C", purple: "#A78BFA", blue: "#60A5FA", orange: "#FB923C",
+      text: "#F0EAD6", textDim: "#8A8070", textMuted: "#4A4438",
+      bofa: "#E31837", robinhood: "#00C805", fidelity: "#367B3E", sofi: "#0A2F5A", crypto: "#F7931A",
+    };
+
+    const ACCOUNT_COLORS = { "Bank of America": C.bofa, "Robinhood": C.robinhood, "Fidelity": C.fidelity, "SoFi": C.sofi, "Crypto": C.crypto };
+    const ACCOUNT_ICONS = { "Bank of America": "🏦", "Robinhood": "🪶", "Fidelity": "📊", "SoFi": "💳", "Crypto": "₿" };
+    const PIE_COLORS = [C.gold, C.teal, C.purple, C.orange, C.blue, C.red, "#34D399", "#F472B6"];
+    const GOAL_COLORS = [C.gold, C.teal, C.purple, C.orange, C.blue];
+
+    const fmt = (n) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(n || 0);
+    const fmtPct = (n) => `${n > 0 ? "+" : ""}${Number(n || 0).toFixed(1)}%`;
+    const fmtDate = (d) => { try { return new Date(d + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" }); } catch { return d; } };
+    const groupBy = (arr, key) => arr.reduce((acc, item) => { (acc[item[key]] = acc[item[key]] || []).push(item); return acc; }, {});
+
+    const normalizeDate = (d) => {
+      if (!d) return "";
+      if (/^\d{4}-\d{2}-\d{2}/.test(d)) return d.slice(0, 10);
+      const m = d.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+      if (m) return `${m[3]}-${m[1].padStart(2, "0")}-${m[2].padStart(2, "0")}`;
+      return d;
+    };
+
+    function cleanNum(s) { return (s || "").replace(/[$,\s]/g, ""); }
+
+    const SAMPLE_TX = [
+      { id: "s1", date: "2026-02-01", description: "GOOGLE LLC PAYROLL", amount: 4924.99, type: "income", category: "Income", account: "Bank of America", runningBalance: 8205.93, endingBalance: 8205.93 },
+      { id: "s2", date: "2026-02-03", description: "Rent", amount: 1800, type: "expense", category: "Housing", account: "Bank of America" },
+      { id: "s4", date: "2026-02-08", description: "KRKNF — KRAKEN ROBOTICS", amount: 18.46, type: "investment", category: "Buy", account: "Fidelity" },
+      { id: "s5", date: "2026-02-10", description: "FRCOY — FAST RETAILING", amount: 88.13, type: "investment", category: "Buy", account: "Fidelity" },
+    ];
+    const SAMPLE_GOALS = [
+      { id: 1, name: "Emergency Fund", target: 20000, current: 14200, deadline: "2025-08", icon: "🛡️", color: C.gold },
+      { id: 2, name: "Vacation", target: 5000, current: 2800, deadline: "2025-10", icon: "✈️", color: C.teal },
+      { id: 3, name: "Down Payment", target: 80000, current: 31000, deadline: "2027-01", icon: "🏠", color: C.purple },
+    ];
+    const SAMPLE_NW = [
+      { month: "Sep'25", value: 62000 }, { month: "Oct'25", value: 65500 },
+      { month: "Nov'25", value: 64200 }, { month: "Dec'25", value: 68800 },
+      { month: "Jan'26", value: 72100 }, { month: "Feb'26", value: 76400 },
+    ];
+
+    function parseBofA(text) {
+      const lines = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim().split("\n");
+      let headerIdx = -1;
+      for (let i = 0; i < lines.length; i++) {
+        const first = lines[i].split("\t")[0].trim().replace(/"/g, "").toLowerCase();
+        if (first === "date") { headerIdx = i; break; }
+      }
+      if (headerIdx === -1) {
+        for (let i = 0; i < lines.length; i++) {
+          const l = lines[i].toLowerCase();
+          if (l.includes("date") && l.includes("description") && l.includes("amount")) { headerIdx = i; break; }
+        }
+      }
+      if (headerIdx === -1) return [];
+
+      // Extract ending balance from summary section
+      let endingBalance = null;
+      for (let i = 0; i < headerIdx; i++) {
+        if (lines[i].toLowerCase().includes("ending balance")) {
+          const cols = lines[i].split("\t").map(c => c.trim().replace(/"/g, ""));
+          for (const col of cols) {
+            const v = parseFloat(col.replace(/[$,]/g, ""));
+            if (!isNaN(v) && v > 0) { endingBalance = v; break; }
+          }
+        }
+      }
+
+      const sep = lines[headerIdx].includes("\t") ? "\t" : ",";
+      const headers = lines[headerIdx].split(sep).map(h => h.trim().replace(/"/g, "").toLowerCase());
+      const dateIdx = headers.findIndex(h => h === "date");
+      const descIdx = headers.findIndex(h => h.includes("description"));
+      const amtIdx = headers.findIndex(h => h === "amount");
+      if (dateIdx === -1 || descIdx === -1 || amtIdx === -1) return [];
+
+      const SKIP = ["beginning balance", "ending balance", "total credits", "total debits"];
+      const results = [];
+
+      for (let i = headerIdx + 1; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line) continue;
+        const cols = line.split(sep).map(c => c.trim().replace(/"/g, ""));
+        const date = cols[dateIdx] || "";
+        const description = cols[descIdx] || "";
+        const rawAmt = cleanNum(cols[amtIdx]);
+        const rawBal = cleanNum(cols[amtIdx + 1] || "");
+        if (!date || !description) continue;
+        if (SKIP.some(s => description.toLowerCase().includes(s))) continue;
+        const amount = parseFloat(rawAmt);
+        if (isNaN(amount) || amount === 0) continue;
+        const runningBalance = parseFloat(rawBal) || null;
+
+        const desc = description.toUpperCase();
+        let category = "Other";
+        if (desc.includes("GOOGLE") && desc.includes("PAYROLL")) category = "Income";
+        else if (desc.includes("MORGAN STANLEY") || desc.includes("ACH CREDIT") || desc.includes("DIRECT DEP")) category = "Income";
+        else if (desc.includes("AMAZON") || desc.includes("WALMART") || desc.includes("TARGET") || desc.includes("MKTPL")) category = "Shopping";
+        else if (desc.includes("TST*") || desc.includes("DOORDASH") || desc.includes("GRUBHUB") || desc.includes("STARBUCKS") || desc.includes("CVS")) category = "Food & Drink";
+        else if (desc.includes("NETFLIX") || desc.includes("SPOTIFY") || desc.includes("APPLE.COM") || desc.includes("HULU")) category = "Subscriptions";
+        else if (desc.includes("UBER") || desc.includes("LYFT") || desc.includes("PARKING") || desc.includes("DIVVY")) category = "Transport";
+        else if (desc.includes("ROBINHOOD") || desc.includes("FIDELITY")) category = "Investments";
+        else if (desc.includes("RENT") || desc.includes("MORTGAGE") || desc.includes("LEASE")) category = "Housing";
+        else if (desc.includes("ELECTRIC") || desc.includes("GAS") || desc.includes("COMCAST") || desc.includes("AT&T") || desc.includes("VERIZON") || desc.includes("T-MOBILE")) category = "Utilities";
+        else if (desc.includes("PHARMACY") || desc.includes("DOCTOR") || desc.includes("GYM") || desc.includes("FITNESS")) category = "Health";
+        else if (desc.includes("ZELLE") || desc.includes("VENMO") || desc.includes("PAYPAL") || desc.includes("INSTANT PAYMENT")) category = "Transfers";
+
+        results.push({ id: `BofA-${i}-${Date.now()}`, date: normalizeDate(date), description, amount: Math.abs(amount), type: amount > 0 ? "income" : "expense", category, account: "Bank of America", runningBalance, endingBalance });
+      }
+      return results;
+    }
+
+    function parseFidelity(text) {
+      const lines = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim().split("\n");
+      if (lines.length < 2) return [];
+      const sep = lines[0].includes("\t") ? "\t" : ",";
+      const headers = lines[0].split(sep).map(h => h.trim().replace(/"/g, "").toLowerCase());
+      const dateIdx = headers.findIndex(h => h.includes("run date") || h === "date");
+      const actionIdx = headers.findIndex(h => h === "action");
+      const symbolIdx = headers.findIndex(h => h === "symbol");
+      const descIdx = headers.findIndex(h => h === "description");
+      const amtIdx = headers.findIndex(h => h === "amount");
+      const qtyIdx = headers.findIndex(h => h === "quantity");
+      const priceIdx = headers.findIndex(h => h === "price");
+      if (dateIdx === -1) return [];
+      const results = [];
+      for (let i = 1; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line) continue;
+        const cols = line.split(sep).map(c => c.trim().replace(/"/g, ""));
+        const date = cols[dateIdx] || "";
+        const action = cols[actionIdx] || "";
+        const symbol = cols[symbolIdx] || "";
+        const description = cols[descIdx] || action || symbol || "Unknown";
+        const rawAmt = cleanNum(cols[amtIdx]);
+        const quantity = parseFloat((cols[qtyIdx] || "0").replace(/,/g, "")) || 0;
+        const price = parseFloat(cleanNum(cols[priceIdx])) || 0;
+        if (!date) continue;
+        const amount = parseFloat(rawAmt) || 0;
+        if (amount === 0 && quantity === 0) continue;
+        const act = action.toUpperCase();
+        let category = "Trade";
+        if (act.includes("BOUGHT") || act.includes("BUY") || act.includes("REINVESTMENT")) category = "Buy";
+        else if (act.includes("SOLD") || act.includes("SELL")) category = "Sell";
+        else if (act.includes("DIVIDEND")) category = "Dividend";
+        else if (act.includes("INTEREST")) category = "Interest";
+        else if (act.includes("TRANSFER")) category = "Transfer";
+        results.push({ id: `Fidelity-${i}-${Date.now()}`, date: normalizeDate(date), description: symbol ? `${symbol} — ${description.slice(0, 40)}` : description.slice(0, 50), amount: Math.abs(amount) || Math.abs(quantity * price), type: "investment", category, account: "Fidelity" });
+      }
+      return results;
+    }
+
+    function detectAndParse(text, accountType) {
+      if (accountType === "Bank of America") return parseBofA(text);
+      if (accountType === "Fidelity") return parseFidelity(text);
+      const lines = text.replace(/\r\n/g, "\n").trim().split("\n").filter(l => l.trim());
+      if (lines.length < 2) return [];
+      const sep = lines[0].includes("\t") ? "\t" : ",";
+      const headers = lines[0].split(sep).map(h => h.trim().replace(/"/g, "").toLowerCase());
+      return lines.slice(1).map((line, i) => {
+        const cols = line.split(sep).map(c => c.trim().replace(/"/g, ""));
+        const obj = {};
+        headers.forEach((h, idx) => { obj[h] = cols[idx] || ""; });
+        const date = normalizeDate(obj.date || obj["transaction date"] || obj["activity date"] || obj["trade date"] || "");
+        const description = obj.description || obj.name || obj.symbol || obj.activity || "Unknown";
+        const rawAmt = cleanNum(obj.amount || obj["net amount"] || obj.total || obj.debit || obj.credit || "0");
+        const amount = parseFloat(rawAmt) || 0;
+        if (!date || amount === 0) return null;
+        const isInvest = ["Robinhood", "Fidelity", "Crypto"].includes(accountType);
+        return { id: `${accountType}-${i}-${Date.now()}`, date, description, amount: Math.abs(amount), type: isInvest ? "investment" : (amount >= 0 ? "income" : "expense"), category: obj.category || obj.type || (isInvest ? "Trade" : "Other"), account: accountType };
+      }).filter(Boolean);
+    }
+
+    const Card = ({ children, style = {} }) => (
+      <div style={{ background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: 18, padding: 24, backdropFilter: "blur(12px)", ...style }}>{children}</div>
+    );
+
+    const SectionTitle = ({ children, action }) => (
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ width: 3, height: 18, background: `linear-gradient(180deg, ${C.gold}, ${C.goldDim})`, borderRadius: 2 }} />
+          <span style={{ fontSize: 11, letterSpacing: 3, textTransform: "uppercase", color: C.goldDim, fontFamily: "'JetBrains Mono', monospace" }}>{children}</span>
+        </div>
+        {action}
+      </div>
+    );
+
+    const KPI = ({ label, value, sub, trend, color = C.gold, icon }) => (
+      <Card style={{ position: "relative", overflow: "hidden" }}>
+        <div style={{ position: "absolute", top: -20, right: -20, width: 100, height: 100, background: `radial-gradient(circle, ${color}20, transparent 70%)`, pointerEvents: "none" }} />
+        <div style={{ fontSize: 20, marginBottom: 6 }}>{icon}</div>
+        <div style={{ fontSize: 10, letterSpacing: 2.5, color: C.textDim, textTransform: "uppercase", fontFamily: "'JetBrains Mono', monospace", marginBottom: 8 }}>{label}</div>
+        <div style={{ fontSize: 26, fontWeight: 700, color: C.text, fontFamily: "'Playfair Display', serif", marginBottom: 4 }}>{value}</div>
+        {sub && <div style={{ fontSize: 12, color: trend > 0 ? C.teal : trend < 0 ? C.red : C.textDim }}>{trend !== undefined && (trend > 0 ? "▲ " : trend < 0 ? "▼ " : "")}{sub}</div>}
+      </Card>
+    );
+
+    const Tip = ({ active, payload, label }) => {
+      if (!active || !payload?.length) return null;
+      return (
+        <div style={{ background: "#0D1320", border: `1px solid ${C.border}`, borderRadius: 10, padding: "10px 14px" }}>
+          <div style={{ color: C.textDim, fontSize: 11, marginBottom: 6 }}>{label}</div>
+          {payload.map((p, i) => <div key={i} style={{ color: p.color, fontSize: 13, fontFamily: "'JetBrains Mono', monospace" }}>{p.name}: {fmt(p.value)}</div>)}
+        </div>
+      );
+    };
+
+    function ImportZone({ onImport }) {
+      const [status, setStatus] = useState({});
+      const [drag, setDrag] = useState(null);
+      const refs = { "Bank of America": useRef(), "Robinhood": useRef(), "Fidelity": useRef(), "SoFi": useRef(), "Crypto": useRef() };
+      const handle = (file, account) => {
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const parsed = detectAndParse(e.target.result, account);
+          if (!parsed.length) { setStatus(s => ({ ...s, [account]: { ok: false, msg: "No valid rows found" } })); return; }
+          onImport(parsed, account);
+          setStatus(s => ({ ...s, [account]: { ok: true, msg: `✓ ${parsed.length} rows imported` } }));
+        };
+        reader.readAsText(file);
+      };
+      return (
+        <div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12, marginBottom: 20 }}>
+            {Object.entries(ACCOUNT_ICONS).map(([account, icon]) => {
+              const color = ACCOUNT_COLORS[account];
+              const st = status[account];
+              return (
+                <div key={account} onClick={() => refs[account].current?.click()}
+                  onDragOver={e => { e.preventDefault(); setDrag(account); }}
+                  onDragLeave={() => setDrag(null)}
+                  onDrop={e => { e.preventDefault(); setDrag(null); handle(e.dataTransfer.files[0], account); }}
+                  style={{ border: `2px dashed ${drag === account ? color : st?.ok ? C.teal : "rgba(255,255,255,0.1)"}`, borderRadius: 14, padding: "20px 12px", textAlign: "center", cursor: "pointer", background: drag === account ? `${color}10` : "transparent", transition: "all 0.2s" }}>
+                  <div style={{ fontSize: 28, marginBottom: 8 }}>{icon}</div>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: C.text, marginBottom: 4 }}>{account}</div>
+                  <div style={{ fontSize: 11, color: st ? (st.ok ? C.teal : C.red) : C.textDim }}>{st ? st.msg : "Drop CSV here"}</div>
+                  <input ref={refs[account]} type="file" accept=".csv" style={{ display: "none" }} onChange={e => handle(e.target.files[0], account)} />
+                </div>
+              );
+            })}
+          </div>
+          <div style={{ padding: "12px 16px", background: "rgba(255,193,80,0.05)", borderRadius: 10, border: `1px solid ${C.border}` }}>
+            <div style={{ fontSize: 12, color: C.textDim, lineHeight: 1.8 }}>
+              <strong style={{ color: C.goldDim }}>How to export:</strong>
+              {" "}BofA: Online Banking → Download → CSV &nbsp;|&nbsp;
+              Robinhood: Account → Statements &amp; History → Export &nbsp;|&nbsp;
+              Fidelity: Accounts &amp; Trade → Account History → Download &nbsp;|&nbsp;
+              SoFi: Statements → Download &nbsp;|&nbsp;
+              Crypto: Reports → Generate → CSV
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function App() {
+      const [tab, setTab] = useState("overview");
+      const [transactions, setTransactions] = useState(() => { try { const s = localStorage.getItem("fv_tx"); return s ? JSON.parse(s) : SAMPLE_TX; } catch { return SAMPLE_TX; } });
+      const [goals, setGoals] = useState(() => { try { const s = localStorage.getItem("fv_goals"); return s ? JSON.parse(s) : SAMPLE_GOALS; } catch { return SAMPLE_GOALS; } });
+      const [netWorthHistory] = useState(SAMPLE_NW);
+      const [filter, setFilter] = useState("All");
+      const [livePrices, setLivePrices] = useState({});
+      const [priceLoading, setPriceLoading] = useState(false);
+      const [showGoalForm, setShowGoalForm] = useState(false);
+      const [newGoal, setNewGoal] = useState({ name: "", target: "", current: "", deadline: "", icon: "🎯" });
+
+      const handleImport = useCallback((parsed, account) => {
+        setTransactions(prev => {
+          const updated = [...prev.filter(x => x.account !== account), ...parsed];
+          try { localStorage.setItem("fv_tx", JSON.stringify(updated)); } catch {}
+          return updated;
+        });
+      }, []);
+
+      const saveGoals = (updated) => {
+        try { localStorage.setItem("fv_goals", JSON.stringify(updated)); } catch {}
+        setGoals(updated);
+      };
+
+      const clearAll = () => {
+        if (!window.confirm("Reset all data to sample?")) return;
+        localStorage.removeItem("fv_tx");
+        localStorage.removeItem("fv_goals");
+        setTransactions(SAMPLE_TX);
+        setGoals(SAMPLE_GOALS);
+        setLivePrices({});
+      };
+
+      const fetchPrices = useCallback(async (symbols) => {
+        if (!symbols.length) return;
+        setPriceLoading(true);
+        const prices = {};
+        await Promise.all(symbols.map(async (sym) => {
+          try {
+            const url = `https://query2.finance.yahoo.com/v8/finance/chart/${sym}?interval=1d&range=5d`;
+            const proxy = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
+            const res = await fetch(proxy);
+            const outer = await res.json();
+            const data = JSON.parse(outer.contents);
+            const meta = data?.chart?.result?.[0]?.meta;
+            if (meta?.regularMarketPrice) {
+              const price = meta.regularMarketPrice;
+              const prev = meta.chartPreviousClose || price;
+              prices[sym] = { price, change: ((price - prev) / prev) * 100 };
+            }
+          } catch {}
+        }));
+        setLivePrices(prices);
+        setPriceLoading(false);
+      }, []);
+
+      useEffect(() => {
+        const syms = [...new Set(transactions.filter(t => t.type === "investment").map(t => {
+          const m = t.description.match(/^([A-Z]{1,6})\s*[—-]/);
+          return m ? m[1] : t.description.split(" ")[0].toUpperCase().slice(0, 6);
+        }))];
+        if (syms.length) fetchPrices(syms);
+      }, [transactions]);
+
+      const filtered = filter === "All" ? transactions : transactions.filter(t => t.account === filter);
+      const bofaTxs = transactions.filter(t => t.account === "Bank of America").sort((a, b) => a.date.localeCompare(b.date));
+      const lastBofaTx = bofaTxs[bofaTxs.length - 1];
+      const bankBalance = lastBofaTx?.endingBalance || lastBofaTx?.runningBalance || null;
+      const bofaMonths = [...new Set(bofaTxs.map(t => t.date.slice(0, 7)).filter(Boolean))].sort();
+      const latestMonth = bofaMonths[bofaMonths.length - 1] || "";
+      const googlePayroll = bofaTxs.filter(t => t.date.slice(0, 7) === latestMonth && t.description.toUpperCase().includes("GOOGLE") && t.description.toUpperCase().includes("PAYROLL"));
+      const monthlyIncome = googlePayroll.reduce((s, t) => s + t.amount, 0);
+      const monthlyExpenses = bofaTxs.filter(t => t.type === "expense" && t.date.slice(0, 7) === latestMonth).reduce((s, t) => s + t.amount, 0);
+      const netSavings = monthlyIncome - monthlyExpenses;
+
+      const holdingsMap = {};
+      transactions.filter(t => t.type === "investment").forEach(t => {
+        const m = t.description.match(/^([A-Z]{1,6})\s*[—-]/);
+        const symbol = m ? m[1] : t.description.split(" ")[0].toUpperCase().slice(0, 6);
+        const key = `${symbol}|${t.account}`;
+        if (!holdingsMap[key]) holdingsMap[key] = { symbol, name: t.description.split("—")[1]?.trim() || t.description.slice(0, 35), account: t.account, bought: 0, sold: 0 };
+        if (t.category === "Sell") holdingsMap[key].sold += t.amount;
+        else holdingsMap[key].bought += t.amount;
+      });
+      const holdings = Object.values(holdingsMap).map(h => ({ ...h, value: Math.max(0, h.bought - h.sold), cost: h.bought })).filter(h => h.value > 0).sort((a, b) => b.value - a.value);
+      const totalInvested = holdings.reduce((s, h) => s + h.cost, 0);
+      const expByCat = Object.entries(filtered.filter(t => t.type === "expense").reduce((acc, t) => { acc[t.category] = (acc[t.category] || 0) + t.amount; return acc; }, {})).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
+      const byMonth = {};
+      filtered.forEach(t => {
+        const mo = t.date?.slice(0, 7); if (!mo) return;
+        if (!byMonth[mo]) byMonth[mo] = { month: mo, income: 0, expenses: 0, invested: 0 };
+        if (t.type === "income") byMonth[mo].income += t.amount;
+        else if (t.type === "expense") byMonth[mo].expenses += t.amount;
+        else if (t.type === "investment") byMonth[mo].invested += t.amount;
+      });
+      const cashflow = Object.values(byMonth).sort((a, b) => a.month.localeCompare(b.month)).slice(-6).map(m => ({ ...m, month: new Date(m.month + "-15").toLocaleDateString("en-US", { month: "short" }) }));
+      const holdingsByAccount = Object.entries(groupBy(holdings, "account")).map(([name, items]) => ({ name, value: items.reduce((s, h) => s + h.value, 0) }));
+
+      const TABS = ["overview", "transactions", "investments", "goals", "import"];
+      const navStyle = (active) => ({ padding: "8px 18px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 12, fontFamily: "'Outfit', sans-serif", fontWeight: 500, background: active ? C.goldGlow : "transparent", color: active ? C.gold : C.textDim, borderBottom: active ? `2px solid ${C.gold}` : "2px solid transparent", transition: "all 0.2s" });
+      const inputStyle = { width: "100%", background: "rgba(255,255,255,0.05)", border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px", color: C.text, fontSize: 14, fontFamily: "'Outfit', sans-serif", outline: "none", boxSizing: "border-box" };
+
+      return (
+        <div style={{ minHeight: "100vh", background: C.bg, color: C.text, fontFamily: "'Outfit', sans-serif", paddingBottom: 60 }}>
+          <div style={{ position: "fixed", inset: 0, pointerEvents: "none", zIndex: 0, background: "radial-gradient(ellipse 80% 50% at 20% 0%, rgba(255,193,80,0.04), transparent 60%), radial-gradient(ellipse 60% 40% at 80% 100%, rgba(62,207,178,0.03), transparent 60%)" }} />
+
+          <div style={{ position: "sticky", top: 0, zIndex: 100, borderBottom: `1px solid ${C.border}`, background: "rgba(7,11,20,0.95)", backdropFilter: "blur(20px)", padding: "0 32px" }}>
+            <div style={{ maxWidth: 1400, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "space-between", height: 64 }}>
+              <div>
+                <span style={{ fontFamily: "'Playfair Display', serif", fontSize: 20, color: C.gold, letterSpacing: 1 }}>◈ FINVAULT</span>
+                <span style={{ marginLeft: 12, fontSize: 11, color: C.textMuted, fontFamily: "'JetBrains Mono', monospace" }}>PERSONAL WEALTH OS</span>
+              </div>
+              <div style={{ display: "flex", gap: 2, background: "rgba(255,255,255,0.03)", borderRadius: 10, padding: 4, border: "1px solid rgba(255,255,255,0.06)" }}>
+                {TABS.map(t => <button key={t} style={navStyle(tab === t)} onClick={() => setTab(t)}>{t === "import" ? "⬆ Import" : t.charAt(0).toUpperCase() + t.slice(1)}</button>)}
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <span style={{ fontSize: 12, color: C.textDim, fontFamily: "'JetBrains Mono', monospace" }}>{transactions.length} records <span style={{ color: C.teal }}>● saved</span></span>
+                <button onClick={clearAll} style={{ fontSize: 11, background: "transparent", border: `1px solid ${C.border}`, borderRadius: 6, color: C.textMuted, cursor: "pointer", padding: "3px 8px", fontFamily: "'JetBrains Mono', monospace" }}>reset</button>
+              </div>
+            </div>
+          </div>
+
+          <div style={{ maxWidth: 1400, margin: "0 auto", padding: "28px 32px 0", position: "relative", zIndex: 1 }}>
+            {tab !== "import" && (
+              <div style={{ display: "flex", gap: 8, marginBottom: 24, flexWrap: "wrap" }}>
+                {["All", "Bank of America", "Robinhood", "Fidelity", "SoFi", "Crypto"].map(a => (
+                  <button key={a} onClick={() => setFilter(a)} style={{ padding: "6px 14px", borderRadius: 20, cursor: "pointer", fontFamily: "'Outfit', sans-serif", fontSize: 12, transition: "all 0.2s", border: `1px solid ${filter === a ? ACCOUNT_COLORS[a] || C.gold : C.border}`, background: filter === a ? `${(ACCOUNT_COLORS[a] || C.gold)}18` : "transparent", color: filter === a ? (ACCOUNT_COLORS[a] || C.gold) : C.textDim }}>{ACCOUNT_ICONS[a] || "◈"} {a}</button>
+                ))}
+              </div>
+            )}
+
+            {tab === "overview" && (
+              <>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 16, marginBottom: 24 }}>
+                  <KPI label="Bank Balance" value={bankBalance != null ? fmt(bankBalance) : "—"} sub="Bank of America" color={C.bofa} icon="🏦" />
+                  <KPI label="Monthly Income" value={fmt(monthlyIncome)} sub={`${latestMonth} · Google Payroll`} color={C.teal} icon="📈" />
+                  <KPI label="Monthly Expenses" value={fmt(monthlyExpenses)} sub={latestMonth} trend={-1} color={C.red} icon="💸" />
+                  <KPI label="Net Savings" value={fmt(netSavings)} trend={netSavings} sub={monthlyIncome > 0 ? `${((netSavings / monthlyIncome) * 100).toFixed(0)}% savings rate` : ""} color={C.purple} icon="💰" />
+                  <KPI label="Invested" value={fmt(totalInvested)} sub={`${holdings.length} positions`} color={C.orange} icon="📊" />
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 20, marginBottom: 20 }}>
+                  <Card>
+                    <SectionTitle>Net Worth Over Time</SectionTitle>
+                    <ResponsiveContainer width="100%" height={220}>
+                      <AreaChart data={netWorthHistory}>
+                        <defs><linearGradient id="gwNW" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor={C.gold} stopOpacity={0.25} /><stop offset="95%" stopColor={C.gold} stopOpacity={0} /></linearGradient></defs>
+                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
+                        <XAxis dataKey="month" tick={{ fill: C.textDim, fontSize: 11 }} axisLine={false} tickLine={false} />
+                        <YAxis tick={{ fill: C.textDim, fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={v => `$${(v / 1000).toFixed(0)}k`} />
+                        <Tooltip content={<Tip />} />
+                        <Area type="monotone" dataKey="value" name="Net Worth" stroke={C.gold} strokeWidth={2.5} fill="url(#gwNW)" dot={{ fill: C.gold, r: 4, strokeWidth: 0 }} />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </Card>
+                  <Card>
+                    <SectionTitle>Portfolio Allocation</SectionTitle>
+                    {holdingsByAccount.length > 0 ? (
+                      <>
+                        <PieChart width={180} height={160} style={{ margin: "0 auto" }}>
+                          <Pie data={holdingsByAccount} cx={85} cy={75} innerRadius={45} outerRadius={70} dataKey="value" strokeWidth={0}>
+                            {holdingsByAccount.map((h, i) => <Cell key={i} fill={ACCOUNT_COLORS[h.name] || PIE_COLORS[i]} />)}
+                          </Pie>
+                          <Tooltip formatter={v => fmt(v)} contentStyle={{ background: "#0D1320", border: `1px solid ${C.border}` }} />
+                        </PieChart>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                          {holdingsByAccount.map((h, i) => (
+                            <div key={h.name} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 8 }}><div style={{ width: 8, height: 8, borderRadius: "50%", background: ACCOUNT_COLORS[h.name] || PIE_COLORS[i] }} /><span style={{ fontSize: 12, color: C.textDim }}>{ACCOUNT_ICONS[h.name]} {h.name}</span></div>
+                              <span style={{ fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: C.text }}>{fmt(h.value)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </>
+                    ) : <div style={{ textAlign: "center", padding: 40, color: C.textDim }}>Import Fidelity/Robinhood to see portfolio</div>}
+                  </Card>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+                  <Card>
+                    <SectionTitle>Income vs Expenses</SectionTitle>
+                    {cashflow.length > 0 ? (
+                      <ResponsiveContainer width="100%" height={200}>
+                        <BarChart data={cashflow} barSize={16}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
+                          <XAxis dataKey="month" tick={{ fill: C.textDim, fontSize: 11 }} axisLine={false} tickLine={false} />
+                          <YAxis tick={{ fill: C.textDim, fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={v => `$${(v / 1000).toFixed(0)}k`} />
+                          <Tooltip content={<Tip />} />
+                          <Bar dataKey="income" name="Income" fill={C.teal} radius={[4, 4, 0, 0]} opacity={0.85} />
+                          <Bar dataKey="expenses" name="Expenses" fill={C.red} radius={[4, 4, 0, 0]} opacity={0.85} />
+                          <Bar dataKey="invested" name="Invested" fill={C.gold} radius={[4, 4, 0, 0]} opacity={0.85} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    ) : <div style={{ textAlign: "center", padding: 40, color: C.textDim }}>Import transactions to see cash flow</div>}
+                  </Card>
+                  <Card>
+                    <SectionTitle>Spending by Category</SectionTitle>
+                    {expByCat.length > 0 ? (
+                      <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+                        <PieChart width={150} height={150}><Pie data={expByCat} cx={70} cy={70} innerRadius={38} outerRadius={62} dataKey="value" strokeWidth={0}>{expByCat.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}</Pie></PieChart>
+                        <div style={{ flex: 1 }}>
+                          {expByCat.slice(0, 7).map((cat, i) => (
+                            <div key={cat.name} style={{ display: "flex", justifyContent: "space-between", marginBottom: 7 }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 7 }}><div style={{ width: 7, height: 7, borderRadius: "50%", background: PIE_COLORS[i % PIE_COLORS.length], flexShrink: 0 }} /><span style={{ fontSize: 12, color: C.textDim }}>{cat.name}</span></div>
+                              <span style={{ fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: C.text }}>{fmt(cat.value)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : <div style={{ textAlign: "center", padding: 40, color: C.textDim }}>No expense data yet</div>}
+                  </Card>
+                </div>
+              </>
+            )}
+
+            {tab === "transactions" && (
+              <Card>
+                <SectionTitle>Transactions ({filtered.length} records)</SectionTitle>
+                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <thead>
+                    <tr style={{ borderBottom: `1px solid ${C.border}` }}>
+                      {["Date", "Description", "Category", "Account", "Type", "Amount"].map(h => (
+                        <th key={h} style={{ textAlign: h === "Amount" ? "right" : "left", padding: "0 12px 14px", fontSize: 10, letterSpacing: 2, color: C.textMuted, textTransform: "uppercase", fontFamily: "'JetBrains Mono', monospace" }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[...filtered].sort((a, b) => b.date.localeCompare(a.date)).map(t => {
+                      const color = t.type === "income" ? C.teal : t.type === "investment" ? C.gold : C.red;
+                      return (
+                        <tr key={t.id} style={{ borderBottom: "1px solid rgba(255,255,255,0.035)" }} onMouseEnter={e => e.currentTarget.style.background = C.bgHover} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                          <td style={{ padding: "12px", color: C.textDim, fontSize: 12, fontFamily: "'JetBrains Mono', monospace" }}>{fmtDate(t.date)}</td>
+                          <td style={{ padding: "12px", color: C.text, fontSize: 13, maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.description}</td>
+                          <td style={{ padding: "12px" }}><span style={{ background: "rgba(255,255,255,0.05)", color: C.textDim, padding: "3px 10px", borderRadius: 20, fontSize: 11 }}>{t.category}</span></td>
+                          <td style={{ padding: "12px" }}><span style={{ color: ACCOUNT_COLORS[t.account], fontSize: 12 }}>{ACCOUNT_ICONS[t.account]} {t.account}</span></td>
+                          <td style={{ padding: "12px", color, fontSize: 11, textTransform: "capitalize" }}>{t.type}</td>
+                          <td style={{ padding: "12px", fontFamily: "'JetBrains Mono', monospace", fontWeight: 600, fontSize: 14, color, textAlign: "right" }}>{t.type === "income" ? "+" : t.type === "investment" ? "→ " : "-"}{fmt(t.amount)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </Card>
+            )}
+
+            {tab === "investments" && (
+              <>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 24 }}>
+                  <KPI label="Total Invested" value={fmt(totalInvested)} color={C.gold} icon="💼" />
+                  <KPI label="Positions" value={holdings.length} color={C.purple} icon="🗂️" />
+                  <KPI label="Accounts" value={[...new Set(holdings.map(h => h.account))].length} color={C.teal} icon="🏦" />
+                  <KPI label="Live Prices" value={priceLoading ? "Loading..." : `${Object.keys(livePrices).length} fetched`} color={C.orange} icon="📡" />
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 20 }}>
+                  <Card>
+                    <SectionTitle>
+                      Holdings
+                      <button onClick={() => fetchPrices(holdings.map(h => h.symbol))} style={{ fontSize: 11, background: "transparent", border: `1px solid ${C.border}`, borderRadius: 6, color: C.textDim, cursor: "pointer", padding: "4px 10px", fontFamily: "'JetBrains Mono', monospace" }}>{priceLoading ? "⟳ loading..." : "↻ refresh"}</button>
+                    </SectionTitle>
+                    {holdings.length > 0 ? (
+                      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                        <thead>
+                          <tr style={{ borderBottom: `1px solid ${C.border}` }}>
+                            {["Symbol", "Name", "Account", "Cost Basis", "Live Price", "Day %", "Gain/Loss"].map(h => (
+                              <th key={h} style={{ textAlign: "left", padding: "0 10px 14px", fontSize: 10, letterSpacing: 2, color: C.textMuted, textTransform: "uppercase", fontFamily: "'JetBrains Mono', monospace" }}>{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {holdings.map((h, i) => {
+                            const lp = livePrices[h.symbol];
+                            const gain = h.value - h.cost;
+                            const gainPct = h.cost > 0 ? ((gain / h.cost) * 100).toFixed(1) : 0;
+                            return (
+                              <tr key={i} style={{ borderBottom: "1px solid rgba(255,255,255,0.035)" }} onMouseEnter={e => e.currentTarget.style.background = C.bgHover} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                                <td style={{ padding: "12px 10px", color: C.gold, fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }}>{h.symbol}</td>
+                                <td style={{ padding: "12px 10px", color: C.text, fontSize: 12, maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{h.name}</td>
+                                <td style={{ padding: "12px 10px" }}><span style={{ color: ACCOUNT_COLORS[h.account], fontSize: 11 }}>{ACCOUNT_ICONS[h.account]} {h.account}</span></td>
+                                <td style={{ padding: "12px 10px", fontFamily: "'JetBrains Mono', monospace", color: C.textDim, fontSize: 13 }}>{fmt(h.cost)}</td>
+                                <td style={{ padding: "12px 10px", fontFamily: "'JetBrains Mono', monospace", color: lp ? C.text : C.textMuted, fontSize: 13 }}>{lp ? `$${lp.price.toFixed(2)}` : priceLoading ? "..." : "—"}</td>
+                                <td style={{ padding: "12px 10px", fontFamily: "'JetBrains Mono', monospace", fontSize: 13, color: lp ? (lp.change >= 0 ? C.teal : C.red) : C.textMuted }}>{lp ? fmtPct(lp.change) : "—"}</td>
+                                <td style={{ padding: "12px 10px", fontFamily: "'JetBrains Mono', monospace", color: gain >= 0 ? C.teal : C.red, fontSize: 13 }}>{fmt(gain)} <span style={{ fontSize: 11, opacity: 0.7 }}>({gainPct}%)</span></td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    ) : <div style={{ textAlign: "center", padding: 40, color: C.textDim }}>Import Fidelity, Robinhood, or Crypto CSVs</div>}
+                  </Card>
+                  <Card>
+                    <SectionTitle>By Account</SectionTitle>
+                    {holdingsByAccount.length > 0 ? (
+                      <>
+                        <PieChart width={200} height={200} style={{ margin: "0 auto" }}>
+                          <Pie data={holdingsByAccount} cx={95} cy={95} innerRadius={55} outerRadius={85} dataKey="value" strokeWidth={0}>
+                            {holdingsByAccount.map((h, i) => <Cell key={i} fill={ACCOUNT_COLORS[h.name] || PIE_COLORS[i]} />)}
+                          </Pie>
+                          <Tooltip formatter={v => fmt(v)} contentStyle={{ background: "#0D1320", border: `1px solid ${C.border}` }} />
+                        </PieChart>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8 }}>
+                          {holdingsByAccount.map((h, i) => (
+                            <div key={h.name} style={{ display: "flex", justifyContent: "space-between" }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 8 }}><div style={{ width: 8, height: 8, borderRadius: "50%", background: ACCOUNT_COLORS[h.name] || PIE_COLORS[i] }} /><span style={{ fontSize: 12, color: C.textDim }}>{h.name}</span></div>
+                              <span style={{ fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: C.text }}>{fmt(h.value)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </>
+                    ) : <div style={{ textAlign: "center", padding: 20, color: C.textDim }}>No holdings yet</div>}
+                  </Card>
+                </div>
+              </>
+            )}
+
+            {tab === "goals" && (
+              <>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+                  <div style={{ color: C.textDim, fontSize: 14 }}>{goals.length} active goals</div>
+                  <button onClick={() => setShowGoalForm(v => !v)} style={{ padding: "9px 20px", background: `linear-gradient(135deg, ${C.gold}, ${C.goldDim})`, border: "none", borderRadius: 8, color: "#07080A", fontWeight: 700, fontSize: 12, cursor: "pointer", fontFamily: "'JetBrains Mono', monospace", letterSpacing: 1 }}>＋ ADD GOAL</button>
+                </div>
+                {showGoalForm && (
+                  <Card style={{ marginBottom: 24, borderColor: C.borderHover }}>
+                    <SectionTitle>New Goal</SectionTitle>
+                    <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr 80px auto", gap: 12, alignItems: "flex-end" }}>
+                      {[{ label: "Name", key: "name", type: "text", placeholder: "Dream Vacation" }, { label: "Target ($)", key: "target", type: "number", placeholder: "10000" }, { label: "Saved ($)", key: "current", type: "number", placeholder: "0" }, { label: "Deadline", key: "deadline", type: "month" }, { label: "Icon", key: "icon", type: "text", placeholder: "🎯" }].map(f => (
+                        <div key={f.key}>
+                          <label style={{ display: "block", fontSize: 10, color: C.textMuted, marginBottom: 6, letterSpacing: 2, textTransform: "uppercase", fontFamily: "'JetBrains Mono', monospace" }}>{f.label}</label>
+                          <input type={f.type} placeholder={f.placeholder} value={newGoal[f.key]} onChange={e => setNewGoal(g => ({ ...g, [f.key]: e.target.value }))} style={inputStyle} />
+                        </div>
+                      ))}
+                      <button onClick={() => { if (!newGoal.name || !newGoal.target) return; saveGoals([...goals, { id: Date.now(), ...newGoal, target: +newGoal.target, current: +newGoal.current || 0, color: GOAL_COLORS[goals.length % GOAL_COLORS.length] }]); setNewGoal({ name: "", target: "", current: "", deadline: "", icon: "🎯" }); setShowGoalForm(false); }} style={{ padding: "10px", background: `linear-gradient(135deg, ${C.gold}, ${C.goldDim})`, border: "none", borderRadius: 8, color: "#07080A", fontWeight: 700, fontSize: 12, cursor: "pointer", fontFamily: "'JetBrains Mono', monospace" }}>SAVE</button>
+                    </div>
+                  </Card>
+                )}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+                  {goals.map(g => {
+                    const pct = Math.min((g.current / g.target) * 100, 100);
+                    return (
+                      <Card key={g.id} style={{ borderColor: `${g.color}30`, position: "relative", overflow: "hidden" }}>
+                        <div style={{ position: "absolute", top: 0, left: 0, height: 3, width: `${pct}%`, background: `linear-gradient(90deg, ${g.color}, ${g.color}88)`, transition: "width 1s ease" }} />
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 }}>
+                          <div>
+                            <div style={{ fontSize: 28, marginBottom: 6 }}>{g.icon}</div>
+                            <div style={{ fontSize: 17, fontWeight: 600, color: C.text }}>{g.name}</div>
+                            {g.deadline && <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2, fontFamily: "'JetBrains Mono', monospace" }}>By {g.deadline}</div>}
+                          </div>
+                          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                            <div style={{ fontSize: 24, fontFamily: "'Playfair Display', serif", color: g.color, fontWeight: 700 }}>{pct.toFixed(0)}%</div>
+                            <button onClick={() => saveGoals(goals.filter(x => x.id !== g.id))} style={{ background: "rgba(255,94,108,0.1)", border: "none", borderRadius: 6, color: C.red, cursor: "pointer", padding: "4px 8px", fontSize: 12 }}>✕</button>
+                          </div>
+                        </div>
+                        <div style={{ background: "rgba(255,255,255,0.05)", borderRadius: 8, height: 8, overflow: "hidden", marginBottom: 16 }}>
+                          <div style={{ width: `${pct}%`, height: "100%", background: `linear-gradient(90deg, ${g.color}, ${g.color}88)`, borderRadius: 8, transition: "width 1s ease" }} />
+                        </div>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+                          {[["SAVED", fmt(g.current), C.teal], ["REMAINING", fmt(g.target - g.current), C.red], ["GOAL", fmt(g.target), C.text]].map(([label, val, color]) => (
+                            <div key={label} style={{ textAlign: "center" }}>
+                              <div style={{ fontSize: 10, color: C.textMuted, marginBottom: 3, letterSpacing: 1.5, fontFamily: "'JetBrains Mono', monospace" }}>{label}</div>
+                              <div style={{ fontFamily: "'JetBrains Mono', monospace", color, fontWeight: 600, fontSize: 13 }}>{val}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </Card>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+
+            {tab === "import" && (
+              <Card>
+                <SectionTitle>Import Account Data</SectionTitle>
+                <p style={{ color: C.textDim, fontSize: 14, marginBottom: 24, lineHeight: 1.7 }}>
+                  Export a CSV from each account and drop it below. Data saves automatically to this browser — you only need to import once per device, or when refreshing with newer transactions.
+                </p>
+                <ImportZone onImport={handleImport} />
+              </Card>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+</body>
+</html>

@@ -45,7 +45,7 @@ const nd=d=>{
   if(m)return`${m[3]}-${m[1].padStart(2,"0")}-${m[2].padStart(2,"0")}`;
   return d;
 };
-const cn=s=>(s||"").replace(/[$,\s]/g,"");
+const cn=s=>(s||"").split("$").join("").split(",").join("").split(" ").join("").trim();
 
 // ── Simple SVG Charts (no dependencies) ──
 function BarChart({data,keys,colors,height=180}){
@@ -142,7 +142,7 @@ function parseBofA(text){
   for(let i=0;i<hi;i++){
     if(lines[i].toLowerCase().includes("ending balance")){
       const cols=lines[i].split("\t").map(c=>c.trim().replace(/"/g,""));
-      for(const col of cols){const v=parseFloat(col.replace(/[$,]/g,""));if(!isNaN(v)&&v>0){eb=v;break;}}
+      for(const col of cols){const cleaned=col.split("$").join("").split(",").join("").trim();const v=parseFloat(cleaned);if(!isNaN(v)&&v>100){eb=v;break;}}
     }
   }
   const sep=lines[hi].includes("\t")?"\t":",";

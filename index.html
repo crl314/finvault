@@ -6,14 +6,12 @@
   <title>FinVault – Personal Wealth OS</title>
   <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-  <script src="https://unpkg.com/react-is@18/umd/react-is.production.min.js"></script>
-  <script src="https://unpkg.com/recharts@2.8.0/umd/Recharts.min.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Outfit:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
   <style>
     *{margin:0;padding:0;box-sizing:border-box}
     body{background:#070B14;color:#F0EAD6;font-family:'Outfit',sans-serif}
     ::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:#070B14}::-webkit-scrollbar-thumb{background:rgba(255,193,80,0.2);border-radius:3px}
-    button{cursor:pointer}
+    button{cursor:pointer;font-family:'Outfit',sans-serif}
   </style>
 </head>
 <body>
@@ -23,13 +21,11 @@
 'use strict';
 const e=React.createElement;
 const {useState,useRef,useCallback,useEffect}=React;
-const {AreaChart,Area,BarChart,Bar,PieChart,Pie,Cell,XAxis,YAxis,CartesianGrid,Tooltip,ResponsiveContainer}=Recharts;
 
 const C={
   bg:"#070B14",bgCard:"rgba(255,255,255,0.028)",bgHover:"rgba(255,255,255,0.045)",
-  border:"rgba(255,193,80,0.13)",borderHover:"rgba(255,193,80,0.28)",
-  gold:"#FFC150",goldDim:"#C8924A",goldGlow:"rgba(255,193,80,0.15)",
-  teal:"#3ECFB2",red:"#FF5E6C",purple:"#A78BFA",blue:"#60A5FA",orange:"#FB923C",
+  border:"rgba(255,193,80,0.13)",gold:"#FFC150",goldDim:"#C8924A",goldGlow:"rgba(255,193,80,0.15)",
+  teal:"#3ECFB2",red:"#FF5E6C",purple:"#A78BFA",orange:"#FB923C",blue:"#60A5FA",
   text:"#F0EAD6",textDim:"#8A8070",textMuted:"#4A4438",
   bofa:"#E31837",robinhood:"#00C805",fidelity:"#367B3E",sofi:"#0A2F5A",crypto:"#F7931A"
 };
@@ -51,6 +47,74 @@ const nd=d=>{
 };
 const cn=s=>(s||"").replace(/[$,\s]/g,"");
 
+// ── Simple SVG Charts (no dependencies) ──
+function BarChart({data,keys,colors,height=180}){
+  const w=600,h=height,pad={t:10,r:10,b:30,l:50};
+  const cw=w-pad.l-pad.r,ch=h-pad.t-pad.b;
+  const maxV=Math.max(...data.flatMap(d=>keys.map(k=>d[k]||0)),1);
+  const bw=Math.floor(cw/data.length);
+  const sw=Math.floor(bw*0.8/keys.length);
+  return e("svg",{viewBox:`0 0 ${w} ${h}`,style:{width:"100%",height}},
+    // grid lines
+    [0.25,0.5,0.75,1].map(p=>e("line",{key:p,x1:pad.l,y1:pad.t+ch*(1-p),x2:pad.l+cw,y2:pad.t+ch*(1-p),stroke:"rgba(255,255,255,0.05)",strokeWidth:1})),
+    [0.25,0.5,0.75,1].map(p=>e("text",{key:`t${p}`,x:pad.l-4,y:pad.t+ch*(1-p)+4,textAnchor:"end",fontSize:9,fill:C.textMuted},"$"+(maxV*p/1000).toFixed(0)+"k")),
+    data.map((d,i)=>{
+      const x=pad.l+i*bw+bw*0.1;
+      return e("g",{key:i},
+        keys.map((k,ki)=>{
+          const v=d[k]||0,bh=Math.max(1,(v/maxV)*ch);
+          return e("rect",{key:k,x:x+ki*sw,y:pad.t+ch-bh,width:sw-1,height:bh,fill:colors[ki],opacity:0.85,rx:2});
+        }),
+        e("text",{x:pad.l+i*bw+bw/2,y:h-8,textAnchor:"middle",fontSize:9,fill:C.textMuted},d.month||d.label)
+      );
+    })
+  );
+}
+
+function AreaChart({data,dataKey,color,height=180}){
+  const w=600,h=height,pad={t:10,r:10,b:30,l:50};
+  const cw=w-pad.l-pad.r,ch=h-pad.t-pad.b;
+  const vals=data.map(d=>d[dataKey]||0);
+  const maxV=Math.max(...vals,1),minV=Math.min(...vals,0);
+  const range=maxV-minV||1;
+  const px=(i)=>pad.l+(i/(data.length-1||1))*cw;
+  const py=(v)=>pad.t+ch-(((v-minV)/range)*ch);
+  const pts=data.map((d,i)=>`${px(i)},${py(d[dataKey]||0)}`).join(" ");
+  const area=`M${px(0)},${py(data[0]?.[dataKey]||0)} ${data.map((d,i)=>`L${px(i)},${py(d[dataKey]||0)}`).join(" ")} L${px(data.length-1)},${pad.t+ch} L${px(0)},${pad.t+ch} Z`;
+  return e("svg",{viewBox:`0 0 ${w} ${h}`,style:{width:"100%",height}},
+    e("defs",null,e("linearGradient",{id:"ag",x1:"0",y1:"0",x2:"0",y2:"1"},
+      e("stop",{offset:"0%",stopColor:color,stopOpacity:0.3}),
+      e("stop",{offset:"100%",stopColor:color,stopOpacity:0})
+    )),
+    [0.25,0.5,0.75,1].map(p=>e("line",{key:p,x1:pad.l,y1:pad.t+ch*(1-p),x2:pad.l+cw,y2:pad.t+ch*(1-p),stroke:"rgba(255,255,255,0.05)",strokeWidth:1})),
+    [0.25,0.5,0.75,1].map(p=>e("text",{key:`t${p}`,x:pad.l-4,y:pad.t+ch*(1-p)+4,textAnchor:"end",fontSize:9,fill:C.textMuted},"$"+((minV+range*p)/1000).toFixed(0)+"k")),
+    e("path",{d:area,fill:"url(#ag)"}),
+    e("polyline",{points:pts,fill:"none",stroke:color,strokeWidth:2.5}),
+    data.map((d,i)=>e("circle",{key:i,cx:px(i),cy:py(d[dataKey]||0),r:3.5,fill:color})),
+    data.map((d,i)=>e("text",{key:`l${i}`,x:px(i),y:h-8,textAnchor:"middle",fontSize:9,fill:C.textMuted},d.month||d.label))
+  );
+}
+
+function DonutChart({data,size=160}){
+  const cx=size/2,cy=size/2,r=size*0.35,ri=size*0.22;
+  const total=data.reduce((s,d)=>s+(d.value||0),0)||1;
+  let angle=-Math.PI/2;
+  const slices=data.map((d,i)=>{
+    const sweep=(d.value/total)*Math.PI*2;
+    const x1=cx+r*Math.cos(angle),y1=cy+r*Math.sin(angle);
+    angle+=sweep;
+    const x2=cx+r*Math.cos(angle),y2=cy+r*Math.sin(angle);
+    const xi1=cx+ri*Math.cos(angle-sweep),yi1=cy+ri*Math.sin(angle-sweep);
+    const xi2=cx+ri*Math.cos(angle),yi2=cy+ri*Math.sin(angle);
+    const large=sweep>Math.PI?1:0;
+    return{path:`M${x1},${y1} A${r},${r} 0 ${large},1 ${x2},${y2} L${xi2},${yi2} A${ri},${ri} 0 ${large},0 ${xi1},${yi1} Z`,color:PC[i%PC.length],...d};
+  });
+  return e("svg",{viewBox:`0 0 ${size} ${size}`,style:{width:size,height:size}},
+    slices.map((s,i)=>e("path",{key:i,d:s.path,fill:s.color,stroke:C.bg,strokeWidth:1}))
+  );
+}
+
+// ── Data ──
 const STX=[
   {id:"s1",date:"2026-02-01",description:"GOOGLE LLC PAYROLL",amount:4924.99,type:"income",category:"Income",account:"Bank of America",endingBalance:8205.93},
   {id:"s2",date:"2026-02-03",description:"Rent",amount:1800,type:"expense",category:"Housing",account:"Bank of America"},
@@ -71,10 +135,7 @@ const SNW=[
 function parseBofA(text){
   const lines=text.replace(/\r\n/g,"\n").replace(/\r/g,"\n").trim().split("\n");
   let hi=-1;
-  for(let i=0;i<lines.length;i++){
-    const f=lines[i].split("\t")[0].trim().replace(/"/g,"").toLowerCase();
-    if(f==="date"){hi=i;break;}
-  }
+  for(let i=0;i<lines.length;i++){const f=lines[i].split("\t")[0].trim().replace(/"/g,"").toLowerCase();if(f==="date"){hi=i;break;}}
   if(hi===-1)for(let i=0;i<lines.length;i++){const l=lines[i].toLowerCase();if(l.includes("date")&&l.includes("description")&&l.includes("amount")){hi=i;break;}}
   if(hi===-1)return[];
   let eb=null;
@@ -86,9 +147,7 @@ function parseBofA(text){
   }
   const sep=lines[hi].includes("\t")?"\t":",";
   const hdrs=lines[hi].split(sep).map(h=>h.trim().replace(/"/g,"").toLowerCase());
-  const di=hdrs.findIndex(h=>h==="date");
-  const dsi=hdrs.findIndex(h=>h.includes("description"));
-  const ai=hdrs.findIndex(h=>h==="amount");
+  const di=hdrs.findIndex(h=>h==="date"),dsi=hdrs.findIndex(h=>h.includes("description")),ai=hdrs.findIndex(h=>h==="amount");
   if(di===-1||dsi===-1||ai===-1)return[];
   const SK=["beginning balance","ending balance","total credits","total debits"];
   const res=[];
@@ -96,11 +155,9 @@ function parseBofA(text){
     const line=lines[i].trim();if(!line)continue;
     const cols=line.split(sep).map(c=>c.trim().replace(/"/g,""));
     const date=cols[di]||"",desc=cols[dsi]||"";
-    const ra=cn(cols[ai]),rb=cn(cols[ai+1]||"");
-    if(!date||!desc)continue;
-    if(SK.some(s=>desc.toLowerCase().includes(s)))continue;
-    const amt=parseFloat(ra);if(isNaN(amt)||amt===0)continue;
-    const rb2=parseFloat(rb)||null;
+    if(!date||!desc||SK.some(s=>desc.toLowerCase().includes(s)))continue;
+    const amt=parseFloat(cn(cols[ai]));if(isNaN(amt)||amt===0)continue;
+    const rb=parseFloat(cn(cols[ai+1]||""))||null;
     const d=desc.toUpperCase();
     let cat="Other";
     if(d.includes("GOOGLE")&&d.includes("PAYROLL"))cat="Income";
@@ -113,8 +170,8 @@ function parseBofA(text){
     else if(d.includes("RENT")||d.includes("MORTGAGE")||d.includes("LEASE"))cat="Housing";
     else if(d.includes("ELECTRIC")||d.includes("GAS")||d.includes("COMCAST")||d.includes("AT&T")||d.includes("VERIZON")||d.includes("T-MOBILE"))cat="Utilities";
     else if(d.includes("PHARMACY")||d.includes("DOCTOR")||d.includes("GYM")||d.includes("FITNESS"))cat="Health";
-    else if(d.includes("ZELLE")||d.includes("VENMO")||d.includes("PAYPAL")||d.includes("INSTANT PAYMENT"))cat="Transfers";
-    res.push({id:`BofA-${i}-${Date.now()}`,date:nd(date),description:desc,amount:Math.abs(amt),type:amt>0?"income":"expense",category:cat,account:"Bank of America",runningBalance:rb2,endingBalance:eb});
+    else if(d.includes("ZELLE")||d.includes("VENMO")||d.includes("PAYPAL"))cat="Transfers";
+    res.push({id:`BofA-${i}-${Date.now()}`,date:nd(date),description:desc,amount:Math.abs(amt),type:amt>0?"income":"expense",category:cat,account:"Bank of America",runningBalance:rb,endingBalance:eb});
   }
   return res;
 }
@@ -124,31 +181,22 @@ function parseFidelity(text){
   if(lines.length<2)return[];
   const sep=lines[0].includes("\t")?"\t":",";
   const hdrs=lines[0].split(sep).map(h=>h.trim().replace(/"/g,"").toLowerCase());
-  const di=hdrs.findIndex(h=>h.includes("run date")||h==="date");
-  const aci=hdrs.findIndex(h=>h==="action");
-  const si=hdrs.findIndex(h=>h==="symbol");
-  const dsi=hdrs.findIndex(h=>h==="description");
-  const ami=hdrs.findIndex(h=>h==="amount");
-  const qi=hdrs.findIndex(h=>h==="quantity");
-  const pi=hdrs.findIndex(h=>h==="price");
+  const di=hdrs.findIndex(h=>h.includes("run date")||h==="date"),aci=hdrs.findIndex(h=>h==="action"),si=hdrs.findIndex(h=>h==="symbol");
+  const dsi=hdrs.findIndex(h=>h==="description"),ami=hdrs.findIndex(h=>h==="amount"),qi=hdrs.findIndex(h=>h==="quantity"),pi=hdrs.findIndex(h=>h==="price");
   if(di===-1)return[];
   const res=[];
   for(let i=1;i<lines.length;i++){
     const line=lines[i].trim();if(!line)continue;
     const cols=line.split(sep).map(c=>c.trim().replace(/"/g,""));
-    const date=cols[di]||"",action=cols[aci]||"",symbol=cols[si]||"";
-    const desc=cols[dsi]||action||symbol||"Unknown";
-    const amt=parseFloat(cn(cols[ami]))||0;
-    const qty=parseFloat((cols[qi]||"0").replace(/,/g,""))||0;
-    const price=parseFloat(cn(cols[pi]))||0;
-    if(!date)continue;if(amt===0&&qty===0)continue;
+    const date=cols[di]||"",action=cols[aci]||"",symbol=cols[si]||"",desc=cols[dsi]||action||symbol||"Unknown";
+    const amt=parseFloat(cn(cols[ami]))||0,qty=parseFloat((cols[qi]||"0").replace(/,/g,""))||0,price=parseFloat(cn(cols[pi]))||0;
+    if(!date||amt===0&&qty===0)continue;
     const ac=action.toUpperCase();
     let cat="Trade";
     if(ac.includes("BOUGHT")||ac.includes("BUY")||ac.includes("REINVESTMENT"))cat="Buy";
     else if(ac.includes("SOLD")||ac.includes("SELL"))cat="Sell";
     else if(ac.includes("DIVIDEND"))cat="Dividend";
     else if(ac.includes("INTEREST"))cat="Interest";
-    else if(ac.includes("TRANSFER"))cat="Transfer";
     res.push({id:`Fidelity-${i}-${Date.now()}`,date:nd(date),description:symbol?`${symbol} — ${desc.slice(0,40)}`:desc.slice(0,50),amount:Math.abs(amt)||Math.abs(qty*price),type:"investment",category:cat,account:"Fidelity"});
   }
   return res;
@@ -162,9 +210,9 @@ function parseGeneric(text,acct){
   return lines.slice(1).map((line,i)=>{
     const cols=line.split(sep).map(c=>c.trim().replace(/"/g,""));
     const obj={};hdrs.forEach((h,idx)=>{obj[h]=cols[idx]||"";});
-    const date=nd(obj.date||obj["transaction date"]||obj["activity date"]||obj["trade date"]||"");
-    const desc=obj.description||obj.name||obj.symbol||obj.activity||"Unknown";
-    const amt=parseFloat(cn(obj.amount||obj["net amount"]||obj.total||obj.debit||obj.credit||"0"))||0;
+    const date=nd(obj.date||obj["transaction date"]||obj["activity date"]||"");
+    const desc=obj.description||obj.name||obj.symbol||"Unknown";
+    const amt=parseFloat(cn(obj.amount||obj["net amount"]||obj.total||"0"))||0;
     if(!date||amt===0)return null;
     const inv=["Robinhood","Fidelity","Crypto"].includes(acct);
     return{id:`${acct}-${i}-${Date.now()}`,date,description:desc,amount:Math.abs(amt),type:inv?"investment":(amt>=0?"income":"expense"),category:obj.category||obj.type||(inv?"Trade":"Other"),account:acct};
@@ -177,21 +225,16 @@ function parse(text,acct){
   return parseGeneric(text,acct);
 }
 
-// ── Components ──
-function Card({children,style}){
-  return e("div",{style:{background:C.bgCard,border:`1px solid ${C.border}`,borderRadius:18,padding:24,backdropFilter:"blur(12px)",...style}},children);
-}
-
+// ── UI Components ──
+function Card({children,style}){return e("div",{style:{background:C.bgCard,border:`1px solid ${C.border}`,borderRadius:18,padding:24,backdropFilter:"blur(12px)",...style}},children);}
 function SecTitle({children,action}){
   return e("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20}},
     e("div",{style:{display:"flex",alignItems:"center",gap:10}},
       e("div",{style:{width:3,height:18,background:`linear-gradient(180deg,${C.gold},${C.goldDim})`,borderRadius:2}}),
       e("span",{style:{fontSize:11,letterSpacing:3,textTransform:"uppercase",color:C.goldDim,fontFamily:"'JetBrains Mono',monospace"}},children)
-    ),
-    action||null
+    ),action||null
   );
 }
-
 function KPI({label,value,sub,trend,color=C.gold,icon}){
   return e(Card,{style:{position:"relative",overflow:"hidden"}},
     e("div",{style:{position:"absolute",top:-20,right:-20,width:100,height:100,background:`radial-gradient(circle,${color}20,transparent 70%)`,pointerEvents:"none"}}),
@@ -202,20 +245,10 @@ function KPI({label,value,sub,trend,color=C.gold,icon}){
   );
 }
 
-function Tip({active,payload,label}){
-  if(!active||!payload||!payload.length)return null;
-  return e("div",{style:{background:"#0D1320",border:`1px solid ${C.border}`,borderRadius:10,padding:"10px 14px"}},
-    e("div",{style:{color:C.textDim,fontSize:11,marginBottom:6}},label),
-    payload.map((p,i)=>e("div",{key:i,style:{color:p.color,fontSize:13,fontFamily:"'JetBrains Mono',monospace"}},`${p.name}: ${fmt(p.value)}`))
-  );
-}
-
 function ImportZone({onImport}){
   const [status,setStatus]=useState({});
   const [drag,setDrag]=useState(null);
-  const refs={};
-  Object.keys(AI).forEach(a=>{refs[a]=useRef();});
-
+  const refs={};Object.keys(AI).forEach(a=>{refs[a]=useRef();});
   const handle=(file,acct)=>{
     if(!file)return;
     const r=new FileReader();
@@ -223,23 +256,18 @@ function ImportZone({onImport}){
       const parsed=parse(ev.target.result,acct);
       if(!parsed.length){setStatus(s=>({...s,[acct]:{ok:false,msg:"No valid rows found"}}));return;}
       onImport(parsed,acct);
-      setStatus(s=>({...s,[acct]:{ok:true,msg:`✓ ${parsed.length} rows imported`}}));
+      setStatus(s=>({...s,[acct]:{ok:true,msg:`✓ ${parsed.length} rows`}}));
     };
     r.readAsText(file);
   };
-
   return e("div",null,
     e("div",{style:{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:12,marginBottom:20}},
       Object.entries(AI).map(([acct,icon])=>{
         const color=AC[acct],st=status[acct];
-        return e("div",{
-          key:acct,
-          onClick:()=>refs[acct].current&&refs[acct].current.click(),
-          onDragOver:ev=>{ev.preventDefault();setDrag(acct);},
-          onDragLeave:()=>setDrag(null),
+        return e("div",{key:acct,onClick:()=>refs[acct].current&&refs[acct].current.click(),
+          onDragOver:ev=>{ev.preventDefault();setDrag(acct);},onDragLeave:()=>setDrag(null),
           onDrop:ev=>{ev.preventDefault();setDrag(null);handle(ev.dataTransfer.files[0],acct);},
-          style:{border:`2px dashed ${drag===acct?color:st&&st.ok?C.teal:"rgba(255,255,255,0.1)"}`,borderRadius:14,padding:"20px 12px",textAlign:"center",cursor:"pointer",background:drag===acct?`${color}10`:"transparent",transition:"all 0.2s"}
-        },
+          style:{border:`2px dashed ${drag===acct?color:st&&st.ok?C.teal:"rgba(255,255,255,0.1)"}`,borderRadius:14,padding:"20px 12px",textAlign:"center",cursor:"pointer",background:drag===acct?`${color}10`:"transparent",transition:"all 0.2s"}},
           e("div",{style:{fontSize:28,marginBottom:8}},icon),
           e("div",{style:{fontSize:12,fontWeight:600,color:C.text,marginBottom:4}},acct),
           e("div",{style:{fontSize:11,color:st?(st.ok?C.teal:C.red):C.textDim}},st?st.msg:"Drop CSV here"),
@@ -247,82 +275,58 @@ function ImportZone({onImport}){
         );
       })
     ),
-    e("div",{style:{padding:"12px 16px",background:"rgba(255,193,80,0.05)",borderRadius:10,border:`1px solid ${C.border}`}},
-      e("div",{style:{fontSize:12,color:C.textDim,lineHeight:1.8}},
-        e("strong",{style:{color:C.goldDim}},"How to export: "),
-        "BofA: Online Banking → Download → CSV  |  Robinhood: Account → Statements & History → Export  |  Fidelity: Accounts & Trade → Account History → Download  |  SoFi: Statements → Download  |  Crypto: Reports → Generate → CSV"
-      )
+    e("div",{style:{padding:"12px 16px",background:"rgba(255,193,80,0.05)",borderRadius:10,border:`1px solid ${C.border}`,fontSize:12,color:C.textDim,lineHeight:1.8}},
+      e("strong",{style:{color:C.goldDim}},"How to export: "),
+      "BofA: Online Banking → Download → CSV  |  Fidelity: Accounts & Trade → Account History → Download  |  Robinhood: Account → Statements & History → Export"
     )
   );
 }
 
 function App(){
-  const load=k=>{ try{const s=localStorage.getItem(k);return s?JSON.parse(s):null;}catch{return null;} };
-  const save=(k,v)=>{ try{localStorage.setItem(k,JSON.stringify(v));}catch{} };
+  const load=k=>{try{const s=localStorage.getItem(k);return s?JSON.parse(s):null;}catch{return null;}};
+  const save=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v));}catch{}};
 
   const [tab,setTab]=useState("overview");
   const [tx,setTx]=useState(()=>load("fv_tx")||STX);
   const [goals,setGoals]=useState(()=>load("fv_goals")||SG);
-  const [nwh]=useState(SNW);
   const [filter,setFilter]=useState("All");
   const [prices,setPrices]=useState({});
-  const [pLoading,setPLoading]=useState(false);
+  const [pLoad,setPLoad]=useState(false);
   const [showGF,setShowGF]=useState(false);
   const [newG,setNewG]=useState({name:"",target:"",current:"",deadline:"",icon:"🎯"});
 
   const doImport=useCallback((parsed,acct)=>{
-    setTx(prev=>{
-      const updated=[...prev.filter(x=>x.account!==acct),...parsed];
-      save("fv_tx",updated);
-      return updated;
-    });
+    setTx(prev=>{const u=[...prev.filter(x=>x.account!==acct),...parsed];save("fv_tx",u);return u;});
   },[]);
-
-  const saveGoals=updated=>{ save("fv_goals",updated); setGoals(updated); };
-
-  const clearAll=()=>{
-    if(!window.confirm("Reset all data to sample?"))return;
-    localStorage.removeItem("fv_tx"); localStorage.removeItem("fv_goals");
-    setTx(STX); setGoals(SG); setPrices({});
-  };
+  const saveGoals=u=>{save("fv_goals",u);setGoals(u);};
+  const clearAll=()=>{if(!window.confirm("Reset to sample data?"))return;localStorage.removeItem("fv_tx");localStorage.removeItem("fv_goals");setTx(STX);setGoals(SG);setPrices({});};
 
   const fetchPrices=useCallback(async syms=>{
-    if(!syms.length)return;
-    setPLoading(true);
+    if(!syms.length)return;setPLoad(true);
     const p={};
     await Promise.all(syms.map(async sym=>{
       try{
-        const url=`https://query2.finance.yahoo.com/v8/finance/chart/${sym}?interval=1d&range=5d`;
-        const res=await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(url)}`);
-        const outer=await res.json();
-        const data=JSON.parse(outer.contents);
+        const res=await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(`https://query2.finance.yahoo.com/v8/finance/chart/${sym}?interval=1d&range=5d`)}`);
+        const outer=await res.json();const data=JSON.parse(outer.contents);
         const meta=data&&data.chart&&data.chart.result&&data.chart.result[0]&&data.chart.result[0].meta;
-        if(meta&&meta.regularMarketPrice){
-          const price=meta.regularMarketPrice,prev=meta.chartPreviousClose||price;
-          p[sym]={price,change:((price-prev)/prev)*100};
-        }
+        if(meta&&meta.regularMarketPrice){const pr=meta.regularMarketPrice,pv=meta.chartPreviousClose||pr;p[sym]={price:pr,change:((pr-pv)/pv)*100};}
       }catch{}
     }));
-    setPrices(p); setPLoading(false);
+    setPrices(p);setPLoad(false);
   },[]);
 
   useEffect(()=>{
-    const syms=[...new Set(tx.filter(t=>t.type==="investment").map(t=>{
-      const m=t.description.match(/^([A-Z]{1,6})\s*[—-]/);
-      return m?m[1]:t.description.split(" ")[0].toUpperCase().slice(0,6);
-    }))];
+    const syms=[...new Set(tx.filter(t=>t.type==="investment").map(t=>{const m=t.description.match(/^([A-Z]{1,6})\s*[—-]/);return m?m[1]:t.description.split(" ")[0].toUpperCase().slice(0,6);}))];
     if(syms.length)fetchPrices(syms);
   },[tx]);
 
-  // computed
   const fil=filter==="All"?tx:tx.filter(t=>t.account===filter);
   const bTx=tx.filter(t=>t.account==="Bank of America").sort((a,b)=>a.date.localeCompare(b.date));
   const last=bTx[bTx.length-1];
   const bankBal=last&&(last.endingBalance||last.runningBalance)||null;
   const bMos=[...new Set(bTx.map(t=>t.date.slice(0,7)).filter(Boolean))].sort();
   const lMo=bMos[bMos.length-1]||"";
-  const gp=bTx.filter(t=>t.date.slice(0,7)===lMo&&t.description.toUpperCase().includes("GOOGLE")&&t.description.toUpperCase().includes("PAYROLL"));
-  const mInc=gp.reduce((s,t)=>s+t.amount,0);
+  const mInc=bTx.filter(t=>t.date.slice(0,7)===lMo&&t.description.toUpperCase().includes("GOOGLE")&&t.description.toUpperCase().includes("PAYROLL")).reduce((s,t)=>s+t.amount,0);
   const mExp=bTx.filter(t=>t.type==="expense"&&t.date.slice(0,7)===lMo).reduce((s,t)=>s+t.amount,0);
   const mNet=mInc-mExp;
 
@@ -336,56 +340,33 @@ function App(){
   });
   const holdings=Object.values(hMap).map(h=>({...h,value:Math.max(0,h.bought-h.sold),cost:h.bought})).filter(h=>h.value>0).sort((a,b)=>b.value-a.value);
   const totInv=holdings.reduce((s,h)=>s+h.cost,0);
-
   const expCat=Object.entries(fil.filter(t=>t.type==="expense").reduce((a,t)=>{a[t.category]=(a[t.category]||0)+t.amount;return a;},{})).map(([name,value])=>({name,value})).sort((a,b)=>b.value-a.value);
-
   const byMo={};
-  fil.forEach(t=>{
-    const mo=t.date&&t.date.slice(0,7);if(!mo)return;
-    if(!byMo[mo])byMo[mo]={month:mo,income:0,expenses:0,invested:0};
-    if(t.type==="income")byMo[mo].income+=t.amount;
-    else if(t.type==="expense")byMo[mo].expenses+=t.amount;
-    else if(t.type==="investment")byMo[mo].invested+=t.amount;
-  });
+  fil.forEach(t=>{const mo=t.date&&t.date.slice(0,7);if(!mo)return;if(!byMo[mo])byMo[mo]={month:mo,income:0,expenses:0,invested:0};if(t.type==="income")byMo[mo].income+=t.amount;else if(t.type==="expense")byMo[mo].expenses+=t.amount;else if(t.type==="investment")byMo[mo].invested+=t.amount;});
   const cf=Object.values(byMo).sort((a,b)=>a.month.localeCompare(b.month)).slice(-6).map(m=>({...m,month:new Date(m.month+"-15").toLocaleDateString("en-US",{month:"short"})}));
   const hByAcc=Object.entries(grp(holdings,"account")).map(([name,items])=>({name,value:items.reduce((s,h)=>s+h.value,0)}));
 
   const TABS=["overview","transactions","investments","goals","import"];
-  const ns=active=>({padding:"8px 18px",borderRadius:8,border:"none",cursor:"pointer",fontSize:12,fontFamily:"'Outfit',sans-serif",fontWeight:500,background:active?C.goldGlow:"transparent",color:active?C.gold:C.textDim,borderBottom:active?`2px solid ${C.gold}`:"2px solid transparent",transition:"all 0.2s"});
-  const is={width:"100%",background:"rgba(255,255,255,0.05)",border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",color:C.text,fontSize:14,fontFamily:"'Outfit',sans-serif",outline:"none",boxSizing:"border-box"};
+  const ns=a=>({padding:"8px 18px",borderRadius:8,border:"none",cursor:"pointer",fontSize:12,fontWeight:500,background:a?C.goldGlow:"transparent",color:a?C.gold:C.textDim,borderBottom:a?`2px solid ${C.gold}`:"2px solid transparent",transition:"all 0.2s"});
+  const inp={width:"100%",background:"rgba(255,255,255,0.05)",border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",color:C.text,fontSize:14,outline:"none",boxSizing:"border-box"};
 
-  return e("div",{style:{minHeight:"100vh",background:C.bg,color:C.text,fontFamily:"'Outfit',sans-serif",paddingBottom:60}},
-    e("div",{style:{position:"fixed",inset:0,pointerEvents:"none",zIndex:0,background:"radial-gradient(ellipse 80% 50% at 20% 0%,rgba(255,193,80,0.04),transparent 60%),radial-gradient(ellipse 60% 40% at 80% 100%,rgba(62,207,178,0.03),transparent 60%)"}}),
-
-    // header
+  return e("div",{style:{minHeight:"100vh",background:C.bg,color:C.text,paddingBottom:60}},
+    e("div",{style:{position:"fixed",inset:0,pointerEvents:"none",zIndex:0,background:"radial-gradient(ellipse 80% 50% at 20% 0%,rgba(255,193,80,0.04),transparent 60%)"}}),
+    // Header
     e("div",{style:{position:"sticky",top:0,zIndex:100,borderBottom:`1px solid ${C.border}`,background:"rgba(7,11,20,0.95)",backdropFilter:"blur(20px)",padding:"0 32px"}},
       e("div",{style:{maxWidth:1400,margin:"0 auto",display:"flex",alignItems:"center",justifyContent:"space-between",height:64}},
-        e("div",null,
-          e("span",{style:{fontFamily:"'Playfair Display',serif",fontSize:20,color:C.gold,letterSpacing:1}},"◈ FINVAULT"),
-          e("span",{style:{marginLeft:12,fontSize:11,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace"}},"PERSONAL WEALTH OS")
-        ),
-        e("div",{style:{display:"flex",gap:2,background:"rgba(255,255,255,0.03)",borderRadius:10,padding:4,border:"1px solid rgba(255,255,255,0.06)"}},
-          TABS.map(t=>e("button",{key:t,style:ns(tab===t),onClick:()=>setTab(t)},t==="import"?"⬆ Import":t.charAt(0).toUpperCase()+t.slice(1)))
-        ),
+        e("div",null,e("span",{style:{fontFamily:"'Playfair Display',serif",fontSize:20,color:C.gold}},"◈ FINVAULT"),e("span",{style:{marginLeft:12,fontSize:11,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace"}},"PERSONAL WEALTH OS")),
+        e("div",{style:{display:"flex",gap:2,background:"rgba(255,255,255,0.03)",borderRadius:10,padding:4,border:"1px solid rgba(255,255,255,0.06)"}},TABS.map(t=>e("button",{key:t,style:ns(tab===t),onClick:()=>setTab(t)},t==="import"?"⬆ Import":t.charAt(0).toUpperCase()+t.slice(1)))),
         e("div",{style:{display:"flex",alignItems:"center",gap:12}},
-          e("span",{style:{fontSize:12,color:C.textDim,fontFamily:"'JetBrains Mono',monospace"}},
-            tx.length+" records ",e("span",{style:{color:C.teal}},"● saved")
-          ),
-          e("button",{onClick:clearAll,style:{fontSize:11,background:"transparent",border:`1px solid ${C.border}`,borderRadius:6,color:C.textMuted,cursor:"pointer",padding:"3px 8px",fontFamily:"'JetBrains Mono',monospace"}},"reset")
+          e("span",{style:{fontSize:12,color:C.textDim,fontFamily:"'JetBrains Mono',monospace"}},tx.length+" records ",e("span",{style:{color:C.teal}},"● saved")),
+          e("button",{onClick:clearAll,style:{fontSize:11,background:"transparent",border:`1px solid ${C.border}`,borderRadius:6,color:C.textMuted,padding:"3px 8px"}},"reset")
         )
       )
     ),
-
-    // content
+    // Main
     e("div",{style:{maxWidth:1400,margin:"0 auto",padding:"28px 32px 0",position:"relative",zIndex:1}},
-
-      // filter pills
       tab!=="import"&&e("div",{style:{display:"flex",gap:8,marginBottom:24,flexWrap:"wrap"}},
-        ["All","Bank of America","Robinhood","Fidelity","SoFi","Crypto"].map(a=>
-          e("button",{key:a,onClick:()=>setFilter(a),style:{padding:"6px 14px",borderRadius:20,fontFamily:"'Outfit',sans-serif",fontSize:12,transition:"all 0.2s",border:`1px solid ${filter===a?AC[a]||C.gold:C.border}`,background:filter===a?`${(AC[a]||C.gold)}18`:"transparent",color:filter===a?(AC[a]||C.gold):C.textDim}},
-            (AI[a]||"◈")+" "+a
-          )
-        )
+        ["All","Bank of America","Robinhood","Fidelity","SoFi","Crypto"].map(a=>e("button",{key:a,onClick:()=>setFilter(a),style:{padding:"6px 14px",borderRadius:20,fontSize:12,transition:"all 0.2s",border:`1px solid ${filter===a?AC[a]||C.gold:C.border}`,background:filter===a?`${(AC[a]||C.gold)}18`:"transparent",color:filter===a?(AC[a]||C.gold):C.textDim}},(AI[a]||"◈")+" "+a))
       ),
 
       // OVERVIEW
@@ -398,58 +379,27 @@ function App(){
           e(KPI,{label:"Invested",value:fmt(totInv),sub:`${holdings.length} positions`,color:C.orange,icon:"📊"})
         ),
         e("div",{style:{display:"grid",gridTemplateColumns:"2fr 1fr",gap:20,marginBottom:20}},
-          e(Card,null,
-            e(SecTitle,null,"Net Worth Over Time"),
-            e(ResponsiveContainer,{width:"100%",height:220},
-              e(AreaChart,{data:nwh},
-                e("defs",null,e("linearGradient",{id:"gwNW",x1:"0",y1:"0",x2:"0",y2:"1"},e("stop",{offset:"5%",stopColor:C.gold,stopOpacity:0.25}),e("stop",{offset:"95%",stopColor:C.gold,stopOpacity:0}))),
-                e(CartesianGrid,{strokeDasharray:"3 3",stroke:"rgba(255,255,255,0.04)"}),
-                e(XAxis,{dataKey:"month",tick:{fill:C.textDim,fontSize:11},axisLine:false,tickLine:false}),
-                e(YAxis,{tick:{fill:C.textDim,fontSize:11},axisLine:false,tickLine:false,tickFormatter:v=>`$${(v/1000).toFixed(0)}k`}),
-                e(Tooltip,{content:e(Tip,null)}),
-                e(Area,{type:"monotone",dataKey:"value",name:"Net Worth",stroke:C.gold,strokeWidth:2.5,fill:"url(#gwNW)",dot:{fill:C.gold,r:4,strokeWidth:0}})
-              )
-            )
-          ),
+          e(Card,null,e(SecTitle,null,"Net Worth Over Time"),e(AreaChart,{data:SNW,dataKey:"value",color:C.gold,height:200})),
           e(Card,null,
             e(SecTitle,null,"Portfolio Allocation"),
             hByAcc.length>0?e("div",null,
-              e(PieChart,{width:180,height:160,style:{margin:"0 auto"}},
-                e(Pie,{data:hByAcc,cx:85,cy:75,innerRadius:45,outerRadius:70,dataKey:"value",strokeWidth:0},
-                  hByAcc.map((h,i)=>e(Cell,{key:i,fill:AC[h.name]||PC[i]}))
-                ),
-                e(Tooltip,{formatter:v=>fmt(v),contentStyle:{background:"#0D1320",border:`1px solid ${C.border}`}})
-              ),
-              e("div",{style:{display:"flex",flexDirection:"column",gap:6}},
-                hByAcc.map((h,i)=>e("div",{key:h.name,style:{display:"flex",justifyContent:"space-between",alignItems:"center"}},
-                  e("div",{style:{display:"flex",alignItems:"center",gap:8}},e("div",{style:{width:8,height:8,borderRadius:"50%",background:AC[h.name]||PC[i]}}),e("span",{style:{fontSize:12,color:C.textDim}},`${AI[h.name]||""} ${h.name}`)),
-                  e("span",{style:{fontSize:12,fontFamily:"'JetBrains Mono',monospace",color:C.text}},fmt(h.value))
-                ))
-              )
+              e("div",{style:{display:"flex",justifyContent:"center",marginBottom:16}},e(DonutChart,{data:hByAcc.map((h,i)=>({...h,color:AC[h.name]||PC[i]})),size:160})),
+              hByAcc.map((h,i)=>e("div",{key:h.name,style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}},
+                e("div",{style:{display:"flex",alignItems:"center",gap:8}},e("div",{style:{width:8,height:8,borderRadius:"50%",background:AC[h.name]||PC[i]}}),e("span",{style:{fontSize:12,color:C.textDim}},(AI[h.name]||"")+" "+h.name)),
+                e("span",{style:{fontSize:12,fontFamily:"'JetBrains Mono',monospace",color:C.text}},fmt(h.value))
+              ))
             ):e("div",{style:{textAlign:"center",padding:40,color:C.textDim}},"Import Fidelity/Robinhood to see portfolio")
           )
         ),
         e("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20}},
-          e(Card,null,
-            e(SecTitle,null,"Income vs Expenses"),
-            cf.length>0?e(ResponsiveContainer,{width:"100%",height:200},
-              e(BarChart,{data:cf,barSize:16},
-                e(CartesianGrid,{strokeDasharray:"3 3",stroke:"rgba(255,255,255,0.04)"}),
-                e(XAxis,{dataKey:"month",tick:{fill:C.textDim,fontSize:11},axisLine:false,tickLine:false}),
-                e(YAxis,{tick:{fill:C.textDim,fontSize:11},axisLine:false,tickLine:false,tickFormatter:v=>`$${(v/1000).toFixed(0)}k`}),
-                e(Tooltip,{content:e(Tip,null)}),
-                e(Bar,{dataKey:"income",name:"Income",fill:C.teal,radius:[4,4,0,0],opacity:0.85}),
-                e(Bar,{dataKey:"expenses",name:"Expenses",fill:C.red,radius:[4,4,0,0],opacity:0.85}),
-                e(Bar,{dataKey:"invested",name:"Invested",fill:C.gold,radius:[4,4,0,0],opacity:0.85})
-              )
-            ):e("div",{style:{textAlign:"center",padding:40,color:C.textDim}},"Import transactions to see cash flow")
+          e(Card,null,e(SecTitle,null,"Income vs Expenses"),
+            cf.length>0?e(BarChart,{data:cf,keys:["income","expenses","invested"],colors:[C.teal,C.red,C.gold],height:200}):e("div",{style:{textAlign:"center",padding:40,color:C.textDim}},"Import transactions to see cash flow")
           ),
-          e(Card,null,
-            e(SecTitle,null,"Spending by Category"),
+          e(Card,null,e(SecTitle,null,"Spending by Category"),
             expCat.length>0?e("div",{style:{display:"flex",alignItems:"center",gap:16}},
-              e(PieChart,{width:150,height:150},e(Pie,{data:expCat,cx:70,cy:70,innerRadius:38,outerRadius:62,dataKey:"value",strokeWidth:0},expCat.map((_,i)=>e(Cell,{key:i,fill:PC[i%PC.length]})))),
+              e(DonutChart,{data:expCat.slice(0,7),size:140}),
               e("div",{style:{flex:1}},expCat.slice(0,7).map((cat,i)=>e("div",{key:cat.name,style:{display:"flex",justifyContent:"space-between",marginBottom:7}},
-                e("div",{style:{display:"flex",alignItems:"center",gap:7}},e("div",{style:{width:7,height:7,borderRadius:"50%",background:PC[i%PC.length],flexShrink:0}}),e("span",{style:{fontSize:12,color:C.textDim}},cat.name)),
+                e("div",{style:{display:"flex",alignItems:"center",gap:7}},e("div",{style:{width:7,height:7,borderRadius:"50%",background:PC[i%PC.length]}}),e("span",{style:{fontSize:12,color:C.textDim}},cat.name)),
                 e("span",{style:{fontSize:12,fontFamily:"'JetBrains Mono',monospace",color:C.text}},fmt(cat.value))
               )))
             ):e("div",{style:{textAlign:"center",padding:40,color:C.textDim}},"No expense data yet")
@@ -459,22 +409,24 @@ function App(){
 
       // TRANSACTIONS
       tab==="transactions"&&e(Card,null,
-        e(SecTitle,null,`Transactions (${fil.length} records)`),
-        e("table",{style:{width:"100%",borderCollapse:"collapse"}},
-          e("thead",null,e("tr",{style:{borderBottom:`1px solid ${C.border}`}},
-            ["Date","Description","Category","Account","Type","Amount"].map(h=>e("th",{key:h,style:{textAlign:h==="Amount"?"right":"left",padding:"0 12px 14px",fontSize:10,letterSpacing:2,color:C.textMuted,textTransform:"uppercase",fontFamily:"'JetBrains Mono',monospace"}},h))
-          )),
-          e("tbody",null,[...fil].sort((a,b)=>b.date.localeCompare(a.date)).map(t=>{
-            const color=t.type==="income"?C.teal:t.type==="investment"?C.gold:C.red;
-            return e("tr",{key:t.id,style:{borderBottom:"1px solid rgba(255,255,255,0.035)"},onMouseEnter:ev=>ev.currentTarget.style.background=C.bgHover,onMouseLeave:ev=>ev.currentTarget.style.background="transparent"},
-              e("td",{style:{padding:"12px",color:C.textDim,fontSize:12,fontFamily:"'JetBrains Mono',monospace"}},fmtD(t.date)),
-              e("td",{style:{padding:"12px",color:C.text,fontSize:13,maxWidth:220,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}},t.description),
-              e("td",{style:{padding:"12px"}},e("span",{style:{background:"rgba(255,255,255,0.05)",color:C.textDim,padding:"3px 10px",borderRadius:20,fontSize:11}},t.category)),
-              e("td",{style:{padding:"12px"}},e("span",{style:{color:AC[t.account],fontSize:12}},(AI[t.account]||"")+" "+t.account)),
-              e("td",{style:{padding:"12px",color,fontSize:11,textTransform:"capitalize"}},t.type),
-              e("td",{style:{padding:"12px",fontFamily:"'JetBrains Mono',monospace",fontWeight:600,fontSize:14,color,textAlign:"right"}},(t.type==="income"?"+":t.type==="investment"?"→ ":"-")+fmt(t.amount))
-            );
-          }))
+        e(SecTitle,null,`Transactions (${fil.length})`),
+        e("div",{style:{overflowX:"auto"}},
+          e("table",{style:{width:"100%",borderCollapse:"collapse"}},
+            e("thead",null,e("tr",{style:{borderBottom:`1px solid ${C.border}`}},
+              ["Date","Description","Category","Account","Type","Amount"].map(h=>e("th",{key:h,style:{textAlign:h==="Amount"?"right":"left",padding:"0 12px 14px",fontSize:10,letterSpacing:2,color:C.textMuted,textTransform:"uppercase",fontFamily:"'JetBrains Mono',monospace"}},h))
+            )),
+            e("tbody",null,[...fil].sort((a,b)=>b.date.localeCompare(a.date)).map(t=>{
+              const col=t.type==="income"?C.teal:t.type==="investment"?C.gold:C.red;
+              return e("tr",{key:t.id,style:{borderBottom:"1px solid rgba(255,255,255,0.035)"},onMouseEnter:ev=>ev.currentTarget.style.background=C.bgHover,onMouseLeave:ev=>ev.currentTarget.style.background="transparent"},
+                e("td",{style:{padding:"12px",color:C.textDim,fontSize:12,fontFamily:"'JetBrains Mono',monospace"}},fmtD(t.date)),
+                e("td",{style:{padding:"12px",color:C.text,fontSize:13,maxWidth:220,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}},t.description),
+                e("td",{style:{padding:"12px"}},e("span",{style:{background:"rgba(255,255,255,0.05)",color:C.textDim,padding:"3px 10px",borderRadius:20,fontSize:11}},t.category)),
+                e("td",{style:{padding:"12px"}},e("span",{style:{color:AC[t.account],fontSize:12}},(AI[t.account]||"")+" "+t.account)),
+                e("td",{style:{padding:"12px",color:col,fontSize:11,textTransform:"capitalize"}},t.type),
+                e("td",{style:{padding:"12px",fontFamily:"'JetBrains Mono',monospace",fontWeight:600,fontSize:14,color:col,textAlign:"right"}},(t.type==="income"?"+":t.type==="investment"?"→ ":"-")+fmt(t.amount))
+              );
+            }))
+          )
         )
       ),
 
@@ -484,44 +436,27 @@ function App(){
           e(KPI,{label:"Total Invested",value:fmt(totInv),color:C.gold,icon:"💼"}),
           e(KPI,{label:"Positions",value:holdings.length,color:C.purple,icon:"🗂️"}),
           e(KPI,{label:"Accounts",value:[...new Set(holdings.map(h=>h.account))].length,color:C.teal,icon:"🏦"}),
-          e(KPI,{label:"Live Prices",value:pLoading?"Loading...":`${Object.keys(prices).length} fetched`,color:C.orange,icon:"📡"})
+          e(KPI,{label:"Live Prices",value:pLoad?"Loading...":`${Object.keys(prices).length} fetched`,color:C.orange,icon:"📡"})
         ),
-        e("div",{style:{display:"grid",gridTemplateColumns:"2fr 1fr",gap:20}},
-          e(Card,null,
-            e(SecTitle,{action:e("button",{onClick:()=>fetchPrices(holdings.map(h=>h.symbol)),style:{fontSize:11,background:"transparent",border:`1px solid ${C.border}`,borderRadius:6,color:C.textDim,cursor:"pointer",padding:"4px 10px",fontFamily:"'JetBrains Mono',monospace"}},pLoading?"⟳ loading...":"↻ refresh")},"Holdings"),
-            holdings.length>0?e("table",{style:{width:"100%",borderCollapse:"collapse"}},
-              e("thead",null,e("tr",{style:{borderBottom:`1px solid ${C.border}`}},
-                ["Symbol","Name","Account","Cost Basis","Live Price","Day %","Gain/Loss"].map(h=>e("th",{key:h,style:{textAlign:"left",padding:"0 10px 14px",fontSize:10,letterSpacing:2,color:C.textMuted,textTransform:"uppercase",fontFamily:"'JetBrains Mono',monospace"}},h))
-              )),
-              e("tbody",null,holdings.map((h,i)=>{
-                const lp=prices[h.symbol],gain=h.value-h.cost,gp2=h.cost>0?((gain/h.cost)*100).toFixed(1):0;
-                return e("tr",{key:i,style:{borderBottom:"1px solid rgba(255,255,255,0.035)"},onMouseEnter:ev=>ev.currentTarget.style.background=C.bgHover,onMouseLeave:ev=>ev.currentTarget.style.background="transparent"},
-                  e("td",{style:{padding:"12px 10px",color:C.gold,fontFamily:"'JetBrains Mono',monospace",fontWeight:600}},h.symbol),
-                  e("td",{style:{padding:"12px 10px",color:C.text,fontSize:12,maxWidth:160,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}},h.name),
-                  e("td",{style:{padding:"12px 10px"}},e("span",{style:{color:AC[h.account],fontSize:11}},(AI[h.account]||"")+" "+h.account)),
-                  e("td",{style:{padding:"12px 10px",fontFamily:"'JetBrains Mono',monospace",color:C.textDim,fontSize:13}},fmt(h.cost)),
-                  e("td",{style:{padding:"12px 10px",fontFamily:"'JetBrains Mono',monospace",color:lp?C.text:C.textMuted,fontSize:13}},lp?`$${lp.price.toFixed(2)}`:pLoading?"...":"—"),
-                  e("td",{style:{padding:"12px 10px",fontFamily:"'JetBrains Mono',monospace",fontSize:13,color:lp?(lp.change>=0?C.teal:C.red):C.textMuted}},lp?fmtP(lp.change):"—"),
-                  e("td",{style:{padding:"12px 10px",fontFamily:"'JetBrains Mono',monospace",color:gain>=0?C.teal:C.red,fontSize:13}},`${fmt(gain)} (${gp2}%)`)
-                );
-              }))
-            ):e("div",{style:{textAlign:"center",padding:40,color:C.textDim}},"Import Fidelity, Robinhood, or Crypto CSVs")
-          ),
-          e(Card,null,
-            e(SecTitle,null,"By Account"),
-            hByAcc.length>0?e("div",null,
-              e(PieChart,{width:200,height:200,style:{margin:"0 auto"}},
-                e(Pie,{data:hByAcc,cx:95,cy:95,innerRadius:55,outerRadius:85,dataKey:"value",strokeWidth:0},hByAcc.map((h,i)=>e(Cell,{key:i,fill:AC[h.name]||PC[i]}))),
-                e(Tooltip,{formatter:v=>fmt(v),contentStyle:{background:"#0D1320",border:`1px solid ${C.border}`}})
-              ),
-              e("div",{style:{display:"flex",flexDirection:"column",gap:8,marginTop:8}},
-                hByAcc.map((h,i)=>e("div",{key:h.name,style:{display:"flex",justifyContent:"space-between"}},
-                  e("div",{style:{display:"flex",alignItems:"center",gap:8}},e("div",{style:{width:8,height:8,borderRadius:"50%",background:AC[h.name]||PC[i]}}),e("span",{style:{fontSize:12,color:C.textDim}},h.name)),
-                  e("span",{style:{fontSize:12,fontFamily:"'JetBrains Mono',monospace",color:C.text}},fmt(h.value))
-                ))
-              )
-            ):e("div",{style:{textAlign:"center",padding:20,color:C.textDim}},"No holdings yet")
-          )
+        e(Card,null,
+          e(SecTitle,{action:e("button",{onClick:()=>fetchPrices(holdings.map(h=>h.symbol)),style:{fontSize:11,background:"transparent",border:`1px solid ${C.border}`,borderRadius:6,color:C.textDim,padding:"4px 10px",fontFamily:"'JetBrains Mono',monospace"}},pLoad?"⟳ loading...":"↻ refresh prices")},"Holdings"),
+          holdings.length>0?e("table",{style:{width:"100%",borderCollapse:"collapse"}},
+            e("thead",null,e("tr",{style:{borderBottom:`1px solid ${C.border}`}},
+              ["Symbol","Name","Account","Cost Basis","Live Price","Day %","Gain/Loss"].map(h=>e("th",{key:h,style:{textAlign:"left",padding:"0 10px 14px",fontSize:10,letterSpacing:2,color:C.textMuted,textTransform:"uppercase",fontFamily:"'JetBrains Mono',monospace"}},h))
+            )),
+            e("tbody",null,holdings.map((h,i)=>{
+              const lp=prices[h.symbol],gain=h.value-h.cost,gp2=h.cost>0?((gain/h.cost)*100).toFixed(1):0;
+              return e("tr",{key:i,style:{borderBottom:"1px solid rgba(255,255,255,0.035)"},onMouseEnter:ev=>ev.currentTarget.style.background=C.bgHover,onMouseLeave:ev=>ev.currentTarget.style.background="transparent"},
+                e("td",{style:{padding:"12px 10px",color:C.gold,fontFamily:"'JetBrains Mono',monospace",fontWeight:600}},h.symbol),
+                e("td",{style:{padding:"12px 10px",color:C.text,fontSize:12,maxWidth:160,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}},h.name),
+                e("td",{style:{padding:"12px 10px"}},e("span",{style:{color:AC[h.account],fontSize:11}},(AI[h.account]||"")+" "+h.account)),
+                e("td",{style:{padding:"12px 10px",fontFamily:"'JetBrains Mono',monospace",color:C.textDim,fontSize:13}},fmt(h.cost)),
+                e("td",{style:{padding:"12px 10px",fontFamily:"'JetBrains Mono',monospace",color:lp?C.text:C.textMuted,fontSize:13}},lp?`$${lp.price.toFixed(2)}`:pLoad?"...":"—"),
+                e("td",{style:{padding:"12px 10px",fontFamily:"'JetBrains Mono',monospace",fontSize:13,color:lp?(lp.change>=0?C.teal:C.red):C.textMuted}},lp?fmtP(lp.change):"—"),
+                e("td",{style:{padding:"12px 10px",fontFamily:"'JetBrains Mono',monospace",color:gain>=0?C.teal:C.red,fontSize:13}},`${fmt(gain)} (${gp2}%)`)
+              );
+            }))
+          ):e("div",{style:{textAlign:"center",padding:40,color:C.textDim}},"Import Fidelity, Robinhood, or Crypto CSVs to see holdings")
         )
       ),
 
@@ -529,49 +464,33 @@ function App(){
       tab==="goals"&&e("div",null,
         e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:24}},
           e("div",{style:{color:C.textDim,fontSize:14}},goals.length+" active goals"),
-          e("button",{onClick:()=>setShowGF(v=>!v),style:{padding:"9px 20px",background:`linear-gradient(135deg,${C.gold},${C.goldDim})`,border:"none",borderRadius:8,color:"#07080A",fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"'JetBrains Mono',monospace",letterSpacing:1}},"＋ ADD GOAL")
+          e("button",{onClick:()=>setShowGF(v=>!v),style:{padding:"9px 20px",background:`linear-gradient(135deg,${C.gold},${C.goldDim})`,border:"none",borderRadius:8,color:"#07080A",fontWeight:700,fontSize:12,letterSpacing:1}},"＋ ADD GOAL")
         ),
-        showGF&&e(Card,{style:{marginBottom:24,borderColor:C.borderHover}},
+        showGF&&e(Card,{style:{marginBottom:24}},
           e(SecTitle,null,"New Goal"),
           e("div",{style:{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr 80px auto",gap:12,alignItems:"flex-end"}},
             ...[{label:"Name",key:"name",type:"text",ph:"Dream Vacation"},{label:"Target ($)",key:"target",type:"number",ph:"10000"},{label:"Saved ($)",key:"current",type:"number",ph:"0"},{label:"Deadline",key:"deadline",type:"month",ph:""},{label:"Icon",key:"icon",type:"text",ph:"🎯"}].map(f=>
-              e("div",{key:f.key},
-                e("label",{style:{display:"block",fontSize:10,color:C.textMuted,marginBottom:6,letterSpacing:2,textTransform:"uppercase",fontFamily:"'JetBrains Mono',monospace"}},f.label),
-                e("input",{type:f.type,placeholder:f.ph,value:newG[f.key],onChange:ev=>setNewG(g=>({...g,[f.key]:ev.target.value})),style:is})
-              )
+              e("div",{key:f.key},e("label",{style:{display:"block",fontSize:10,color:C.textMuted,marginBottom:6,letterSpacing:2,textTransform:"uppercase",fontFamily:"'JetBrains Mono',monospace"}},f.label),e("input",{type:f.type,placeholder:f.ph,value:newG[f.key],onChange:ev=>setNewG(g=>({...g,[f.key]:ev.target.value})),style:inp}))
             ),
-            e("button",{onClick:()=>{
-              if(!newG.name||!newG.target)return;
-              saveGoals([...goals,{id:Date.now(),...newG,target:+newG.target,current:+newG.current||0,color:GC[goals.length%GC.length]}]);
-              setNewG({name:"",target:"",current:"",deadline:"",icon:"🎯"});setShowGF(false);
-            },style:{padding:"10px",background:`linear-gradient(135deg,${C.gold},${C.goldDim})`,border:"none",borderRadius:8,color:"#07080A",fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"'JetBrains Mono',monospace"}},"SAVE")
+            e("button",{onClick:()=>{if(!newG.name||!newG.target)return;saveGoals([...goals,{id:Date.now(),...newG,target:+newG.target,current:+newG.current||0,color:GC[goals.length%GC.length]}]);setNewG({name:"",target:"",current:"",deadline:"",icon:"🎯"});setShowGF(false);},style:{padding:"10px",background:`linear-gradient(135deg,${C.gold},${C.goldDim})`,border:"none",borderRadius:8,color:"#07080A",fontWeight:700,fontSize:12}},"SAVE")
           )
         ),
         e("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20}},
           goals.map(g=>{
             const pct=Math.min((g.current/g.target)*100,100);
             return e(Card,{key:g.id,style:{borderColor:`${g.color}30`,position:"relative",overflow:"hidden"}},
-              e("div",{style:{position:"absolute",top:0,left:0,height:3,width:`${pct}%`,background:`linear-gradient(90deg,${g.color},${g.color}88)`,transition:"width 1s ease"}}),
+              e("div",{style:{position:"absolute",top:0,left:0,height:3,width:`${pct}%`,background:`linear-gradient(90deg,${g.color},${g.color}88)`}}),
               e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:20}},
-                e("div",null,
-                  e("div",{style:{fontSize:28,marginBottom:6}},g.icon),
-                  e("div",{style:{fontSize:17,fontWeight:600,color:C.text}},g.name),
-                  g.deadline&&e("div",{style:{fontSize:11,color:C.textMuted,marginTop:2,fontFamily:"'JetBrains Mono',monospace"}},"By "+g.deadline)
-                ),
+                e("div",null,e("div",{style:{fontSize:28,marginBottom:6}},g.icon),e("div",{style:{fontSize:17,fontWeight:600,color:C.text}},g.name),g.deadline&&e("div",{style:{fontSize:11,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace"}},"By "+g.deadline)),
                 e("div",{style:{display:"flex",gap:10,alignItems:"center"}},
                   e("div",{style:{fontSize:24,fontFamily:"'Playfair Display',serif",color:g.color,fontWeight:700}},pct.toFixed(0)+"%"),
-                  e("button",{onClick:()=>saveGoals(goals.filter(x=>x.id!==g.id)),style:{background:"rgba(255,94,108,0.1)",border:"none",borderRadius:6,color:C.red,cursor:"pointer",padding:"4px 8px",fontSize:12}},"✕")
+                  e("button",{onClick:()=>saveGoals(goals.filter(x=>x.id!==g.id)),style:{background:"rgba(255,94,108,0.1)",border:"none",borderRadius:6,color:C.red,padding:"4px 8px",fontSize:12}},"✕")
                 )
               ),
-              e("div",{style:{background:"rgba(255,255,255,0.05)",borderRadius:8,height:8,overflow:"hidden",marginBottom:16}},
-                e("div",{style:{width:`${pct}%`,height:"100%",background:`linear-gradient(90deg,${g.color},${g.color}88)`,borderRadius:8,transition:"width 1s ease"}})
-              ),
+              e("div",{style:{background:"rgba(255,255,255,0.05)",borderRadius:8,height:8,overflow:"hidden",marginBottom:16}},e("div",{style:{width:`${pct}%`,height:"100%",background:`linear-gradient(90deg,${g.color},${g.color}88)`,borderRadius:8}})),
               e("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}},
                 [["SAVED",fmt(g.current),C.teal],["REMAINING",fmt(g.target-g.current),C.red],["GOAL",fmt(g.target),C.text]].map(([lbl,val,col])=>
-                  e("div",{key:lbl,style:{textAlign:"center"}},
-                    e("div",{style:{fontSize:10,color:C.textMuted,marginBottom:3,letterSpacing:1.5,fontFamily:"'JetBrains Mono',monospace"}},lbl),
-                    e("div",{style:{fontFamily:"'JetBrains Mono',monospace",color:col,fontWeight:600,fontSize:13}},val)
-                  )
+                  e("div",{key:lbl,style:{textAlign:"center"}},e("div",{style:{fontSize:10,color:C.textMuted,marginBottom:3,letterSpacing:1.5,fontFamily:"'JetBrains Mono',monospace"}},lbl),e("div",{style:{fontFamily:"'JetBrains Mono',monospace",color:col,fontWeight:600,fontSize:13}},val))
                 )
               )
             );
@@ -582,7 +501,7 @@ function App(){
       // IMPORT
       tab==="import"&&e(Card,null,
         e(SecTitle,null,"Import Account Data"),
-        e("p",{style:{color:C.textDim,fontSize:14,marginBottom:24,lineHeight:1.7}},"Export a CSV from each account and drop it below. Data saves to this browser automatically — import once per device."),
+        e("p",{style:{color:C.textDim,fontSize:14,marginBottom:24,lineHeight:1.7}},"Drop your CSV files below. Data saves to this browser automatically — import once per device."),
         e(ImportZone,{onImport:doImport})
       )
     )

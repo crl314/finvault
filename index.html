@@ -46,6 +46,12 @@ const nd=d=>{
   return d;
 };
 const cn=s=>(s||"").split("$").join("").split(",").join("").split(" ").join("").trim();
+  // Parse a CSV row respecting quoted fields
+  function csvRow(line){
+    const res=[],len=line.length;let cur="",inQ=false,i=0;
+    for(;i<len;i++){const c=line[i];if(c==='"'){inQ=!inQ;}else if(c===","&&!inQ){res.push(cur.trim());cur="";}else{cur+=c;}}
+    res.push(cur.trim());return res;
+  }
 
 // ── Simple SVG Charts (no dependencies) ──
 function BarChart({data,keys,colors,height=180}){
@@ -135,14 +141,25 @@ const SNW=[
 function parseBofA(text){
   const lines=text.replace(/\r\n/g,"\n").replace(/\r/g,"\n").trim().split("\n");
   let hi=-1;
-  for(let i=0;i<lines.length;i++){const f=lines[i].split("\t")[0].trim().replace(/"/g,"").toLowerCase();if(f==="date"){hi=i;break;}}
+  for(let i=0;i<lines.length;i++){const f=lines[i].split("\t")[0].split(",")[0].trim().replace(/"/g,"").toLowerCase();if(f==="date"){hi=i;break;}}
   if(hi===-1)for(let i=0;i<lines.length;i++){const l=lines[i].toLowerCase();if(l.includes("date")&&l.includes("description")&&l.includes("amount")){hi=i;break;}}
   if(hi===-1)return[];
   let eb=null;
   for(let i=0;i<hi;i++){
     if(lines[i].toLowerCase().includes("ending balance")){
-      const cols=lines[i].split("\t").map(c=>c.trim().replace(/"/g,""));
-      for(const col of cols){const cleaned=col.split("$").join("").split(",").join("").trim();const v=parseFloat(cleaned);if(!isNaN(v)&&v>100){eb=v;break;}}
+      // Handle both tab and comma separated, and quoted values like "8,205.93"
+      const raw=lines[i];
+      // Extract all numbers from the line, find the one that looks like a balance
+      const nums=raw.replace(/"/g,"").split(/[,\t]/).map(s=>s.trim()).filter(s=>s.length>0);
+      // Join consecutive number parts that were split by comma (e.g. "8" + "205.93" from "8,205.93")
+      // Better: find quoted number pattern first
+      const qmatch=raw.match(/"([\d,]+\.?\d*)"/);
+      if(qmatch){
+        const v=parseFloat(qmatch[1].split(",").join(""));
+        if(!isNaN(v)&&v>100){eb=v;}
+      } else {
+        for(const s of nums){const v=parseFloat(s.split(",").join(""));if(!isNaN(v)&&v>100){eb=v;break;}}
+      }
     }
   }
   const sep=lines[hi].includes("\t")?"\t":",";
@@ -153,7 +170,7 @@ function parseBofA(text){
   const res=[];
   for(let i=hi+1;i<lines.length;i++){
     const line=lines[i].trim();if(!line)continue;
-    const cols=line.split(sep).map(c=>c.trim().replace(/"/g,""));
+    const cols=sep===","?csvRow(line):line.split(sep).map(c=>c.trim().replace(/"/g,""));
     const date=cols[di]||"",desc=cols[dsi]||"";
     if(!date||!desc||SK.some(s=>desc.toLowerCase().includes(s)))continue;
     const amt=parseFloat(cn(cols[ai]));if(isNaN(amt)||amt===0)continue;
@@ -187,7 +204,7 @@ function parseFidelity(text){
   const res=[];
   for(let i=1;i<lines.length;i++){
     const line=lines[i].trim();if(!line)continue;
-    const cols=line.split(sep).map(c=>c.trim().replace(/"/g,""));
+    const cols=sep===","?csvRow(line):line.split(sep).map(c=>c.trim().replace(/"/g,""));
     const date=cols[di]||"",action=cols[aci]||"",symbol=cols[si]||"",desc=cols[dsi]||action||symbol||"Unknown";
     const amt=parseFloat(cn(cols[ami]))||0,qty=parseFloat((cols[qi]||"0").replace(/,/g,""))||0,price=parseFloat(cn(cols[pi]))||0;
     if(!date||amt===0&&qty===0)continue;
@@ -208,7 +225,7 @@ function parseGeneric(text,acct){
   const sep=lines[0].includes("\t")?"\t":",";
   const hdrs=lines[0].split(sep).map(h=>h.trim().replace(/"/g,"").toLowerCase());
   return lines.slice(1).map((line,i)=>{
-    const cols=line.split(sep).map(c=>c.trim().replace(/"/g,""));
+    const cols=sep===","?csvRow(line):line.split(sep).map(c=>c.trim().replace(/"/g,""));
     const obj={};hdrs.forEach((h,idx)=>{obj[h]=cols[idx]||"";});
     const date=nd(obj.date||obj["transaction date"]||obj["activity date"]||"");
     const desc=obj.description||obj.name||obj.symbol||"Unknown";

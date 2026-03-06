@@ -139,6 +139,7 @@ function parseBofA(text){
     var cat="Other";
     if(d.indexOf("GOOGLE")!==-1&&d.indexOf("PAYROLL")!==-1)cat="Income";
     else if(d.indexOf("MORGAN STANLEY")!==-1||d.indexOf("ACH CREDIT")!==-1||d.indexOf("DIRECT DEP")!==-1)cat="Income";
+    else if(d.indexOf("PUPS")!==-1)cat="Pets";
     else if(d.indexOf("AMAZON")!==-1)cat="Amazon";
     else if(d.indexOf("MARIANO")!==-1||d.indexOf("WALMART")!==-1)cat="Supermarket";
     else if(d.indexOf("TARGET")!==-1||d.indexOf("MKTPL")!==-1||d.indexOf("ROSS")!==-1||d.indexOf("PRIMARK")!==-1||d.indexOf("TJ MAXX")!==-1||d.indexOf("TJMAXX")!==-1||d.indexOf("BURLINGTON")!==-1)cat="Shopping";

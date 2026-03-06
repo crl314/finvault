@@ -139,7 +139,9 @@ function parseBofA(text){
     var cat="Other";
     if(d.indexOf("GOOGLE")!==-1&&d.indexOf("PAYROLL")!==-1)cat="Income";
     else if(d.indexOf("MORGAN STANLEY")!==-1||d.indexOf("ACH CREDIT")!==-1||d.indexOf("DIRECT DEP")!==-1)cat="Income";
-    else if(d.indexOf("AMAZON")!==-1||d.indexOf("WALMART")!==-1||d.indexOf("TARGET")!==-1||d.indexOf("MKTPL")!==-1||d.indexOf("ROSS")!==-1||d.indexOf("PRIMARK")!==-1||d.indexOf("TJ MAXX")!==-1||d.indexOf("TJMAXX")!==-1||d.indexOf("BURLINGTON")!==-1)cat="Shopping";
+    else if(d.indexOf("AMAZON")!==-1)cat="Amazon";
+    else if(d.indexOf("MARIANO")!==-1||d.indexOf("WALMART")!==-1)cat="Supermarket";
+    else if(d.indexOf("TARGET")!==-1||d.indexOf("MKTPL")!==-1||d.indexOf("ROSS")!==-1||d.indexOf("PRIMARK")!==-1||d.indexOf("TJ MAXX")!==-1||d.indexOf("TJMAXX")!==-1||d.indexOf("BURLINGTON")!==-1)cat="Shopping";
     else if(d.indexOf("TST*")!==-1||d.indexOf("DOORDASH")!==-1||d.indexOf("GRUBHUB")!==-1||d.indexOf("STARBUCKS")!==-1||d.indexOf("CVS")!==-1)cat="Food & Drink";
     else if(d.indexOf("NETFLIX")!==-1||d.indexOf("SPOTIFY")!==-1||d.indexOf("APPLE.COM")!==-1||d.indexOf("HULU")!==-1)cat="Subscriptions";
     else if(d.indexOf("UBER")!==-1||d.indexOf("LYFT")!==-1||d.indexOf("PARKING")!==-1||d.indexOf("DIVVY")!==-1)cat="Transport";

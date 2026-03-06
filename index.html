@@ -147,6 +147,7 @@ function parseBofA(text){
     else if(d.indexOf("RENT")!==-1||d.indexOf("MORTGAGE")!==-1||d.indexOf("LEASE")!==-1)cat="Housing";
     else if(d.indexOf("ELECTRIC")!==-1||d.indexOf("COMCAST")!==-1||d.indexOf("AT&T")!==-1||d.indexOf("VERIZON")!==-1||d.indexOf("T-MOBILE")!==-1)cat="Utilities";
     else if(d.indexOf("PHARMACY")!==-1||d.indexOf("DOCTOR")!==-1||d.indexOf("GYM")!==-1||d.indexOf("FITNESS")!==-1)cat="Health";
+    else if(d.indexOf("ROBINHOOD CARD")!==-1)cat="Credit Card Payment";
     else if(d.indexOf("ROBINHOOD")!==-1||d.indexOf("FIDELITY")!==-1)cat="Transfers";
     else if(d.indexOf("ZELLE")!==-1||d.indexOf("VENMO")!==-1||d.indexOf("PAYPAL")!==-1)cat="Transfers";
     var txType=amt>0?"income":"expense";

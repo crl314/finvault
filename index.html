@@ -143,12 +143,11 @@ function parseBofA(text){
     else if(d.indexOf("TST*")!==-1||d.indexOf("DOORDASH")!==-1||d.indexOf("GRUBHUB")!==-1||d.indexOf("STARBUCKS")!==-1||d.indexOf("CVS")!==-1)cat="Food & Drink";
     else if(d.indexOf("NETFLIX")!==-1||d.indexOf("SPOTIFY")!==-1||d.indexOf("APPLE.COM")!==-1||d.indexOf("HULU")!==-1)cat="Subscriptions";
     else if(d.indexOf("UBER")!==-1||d.indexOf("LYFT")!==-1||d.indexOf("PARKING")!==-1||d.indexOf("DIVVY")!==-1)cat="Transport";
-    else if(d.indexOf("ROBINHOOD")!==-1||d.indexOf("FIDELITY")!==-1)cat="Investments";
+    else if(d.indexOf("ROBINHOOD CARD")!==-1)cat="Credit Card Payment";
+    else if(d.indexOf("ROBINHOOD")!==-1||d.indexOf("FIDELITY")!==-1)cat="Transfers";
     else if(d.indexOf("RENT")!==-1||d.indexOf("MORTGAGE")!==-1||d.indexOf("LEASE")!==-1)cat="Housing";
     else if(d.indexOf("ELECTRIC")!==-1||d.indexOf("COMCAST")!==-1||d.indexOf("AT&T")!==-1||d.indexOf("VERIZON")!==-1||d.indexOf("T-MOBILE")!==-1)cat="Utilities";
     else if(d.indexOf("PHARMACY")!==-1||d.indexOf("DOCTOR")!==-1||d.indexOf("GYM")!==-1||d.indexOf("FITNESS")!==-1)cat="Health";
-    else if(d.indexOf("ROBINHOOD CARD")!==-1)cat="Credit Card Payment";
-    else if(d.indexOf("ROBINHOOD")!==-1||d.indexOf("FIDELITY")!==-1)cat="Transfers";
     else if(d.indexOf("ZELLE")!==-1||d.indexOf("VENMO")!==-1||d.indexOf("PAYPAL")!==-1)cat="Transfers";
     var txType=amt>0?"income":"expense";
     res.push({id:"BofA-"+i+"-"+Date.now(),date:nd(date),description:desc,amount:Math.abs(amt),type:txType,category:cat,account:"Bank of America",runningBalance:rb,endingBalance:eb});

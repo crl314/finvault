@@ -260,7 +260,6 @@ function parseRobinhood(text){
 }
 
 function parsePortfolio(text){
-  // Parses Caue's custom multi-section portfolio CSV
   var lines=normLines(text).map(function(l){return l.trim();});
   var res=[];
   var today=new Date().toISOString().slice(0,10);
@@ -272,37 +271,42 @@ function parsePortfolio(text){
     return isNaN(n)?0:n;
   }
 
-  // Account mapping based on section headers
-  var ACCOUNT_MAP={
-    "robinhood":"Robinhood","fidelity":"Fidelity","sofi":"SoFi","fundrise":"Robinhood"
-  };
-
   var currentAccount="Robinhood";
+  var currentSection="Stocks";
   var inDataSection=false;
   var hdrs=[];
+
+  // Section name → account and display section
+  var SECTION_LABELS={
+    "stocks robinhood":"Stocks","qqq":"QQQ / SPY Hedge","spy":"QQQ / SPY Hedge",
+    "metals":"Metals","mutual":"Mutual Funds","venture":"Mutual Funds",
+    "international stocks":"International Stocks","international etf":"International ETFs"
+  };
 
   for(var i=0;i<lines.length;i++){
     var line=lines[i];
     if(!line)continue;
     var cols=csvRow(line);
     var first=(cols[0]||"").trim();
+    var nonEmpty=cols.filter(function(c){return c.trim();}).length;
 
-    // Section header detection (e.g. "Stocks Robinhood Portfolio")
-    if(cols.filter(function(c){return c.trim();}).length<=3&&first&&first!=="Ticker"){
+    // Section header: few non-empty cols and not a data header
+    if(nonEmpty<=4&&first&&first!=="Ticker"&&first!=="TOTAL"&&!/^[A-Z]{1,6}$/.test(first)){
       var fl=first.toLowerCase();
-      inDataSection=false;
-      hdrs=[];
+      inDataSection=false;hdrs=[];
+      // Detect account
       if(fl.indexOf("fidelity")!==-1)currentAccount="Fidelity";
       else if(fl.indexOf("sofi")!==-1)currentAccount="SoFi";
       else currentAccount="Robinhood";
+      // Detect section label
+      currentSection=first.replace(/\(.*\)/g,"").trim();
       continue;
     }
 
-    // Header row detection
-    if(first==="Ticker"||first==="ticker"){
+    // Header row
+    if(first==="Ticker"){
       hdrs=cols.map(function(h){return h.trim().toLowerCase();});
-      inDataSection=true;
-      continue;
+      inDataSection=true;continue;
     }
 
     if(!inDataSection||!hdrs.length)continue;
@@ -320,9 +324,8 @@ function parsePortfolio(text){
 
     if(!sym||sym==="TOTAL"||cost===0)continue;
 
-    // Create a synthetic buy transaction so hMap picks it up
     res.push({
-      id:"PF-"+sym+"-"+Date.now(),
+      id:"PF-"+sym+"-"+i,
       date:today,
       description:sym+" — "+name,
       amount:cost,
@@ -331,7 +334,8 @@ function parsePortfolio(text){
       account:currentAccount,
       symbol:sym,
       qty:qty,
-      currentValue:currentVal
+      currentValue:currentVal,
+      portfolioSection:currentSection
     });
   }
   return res;
@@ -597,7 +601,9 @@ function App(){
     var idx=t.description.indexOf(" —");
     var sym=idx>0?t.description.slice(0,idx).toUpperCase():t.description.split(" ")[0].toUpperCase().slice(0,6);
     var k=sym+"|"+t.account;
-    if(!hMap[k])hMap[k]={symbol:sym,name:(t.description.split("—")[1]||"").trim()||t.description.slice(0,35),account:t.account,bought:0,sold:0};
+    if(!hMap[k])hMap[k]={symbol:sym,name:(t.description.split("—")[1]||"").trim()||t.description.slice(0,35),account:t.account,bought:0,sold:0,currentValue:t.currentValue||0,portfolioSection:t.portfolioSection||""};
+    if(t.currentValue)hMap[k].currentValue=t.currentValue;
+    if(t.portfolioSection)hMap[k].portfolioSection=t.portfolioSection;
     if(t.category==="Sell")hMap[k].sold+=t.amount;else hMap[k].bought+=t.amount;
   });
   var holdings=Object.values(hMap).map(function(h){return Object.assign({},h,{value:Math.max(0,h.bought-h.sold),cost:h.bought});}).filter(function(h){return h.value>0;}).sort(function(a,b){return b.value-a.value;});
@@ -656,7 +662,7 @@ function App(){
       e("div",{style:{maxWidth:1400,margin:"0 auto",display:"flex",alignItems:"center",justifyContent:"space-between",height:64}},
         e("div",null,
           e("span",{style:{fontFamily:"'Playfair Display',serif",fontSize:20,color:C.gold}},"◈ FINVAULT"),
-          e("span",{style:{fontSize:10,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace",marginLeft:8}},"v1.6"),
+          e("span",{style:{fontSize:10,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace",marginLeft:8}},"v1.7"),
           e("span",{style:{marginLeft:12,fontSize:11,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace"}},"PERSONAL WEALTH OS")
         ),
         e("div",{style:{display:"flex",gap:2,background:"rgba(255,255,255,0.03)",borderRadius:10,padding:4,border:"1px solid rgba(255,255,255,0.06)"}},
@@ -797,32 +803,73 @@ function App(){
       tab==="investments"&&e("div",null,
         e("div",{style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:16,marginBottom:24}},
           e(KPI,{label:"Total Invested",value:fmt(totInv),color:C.gold,icon:"💼"}),
+          e(KPI,{label:"Current Value",value:fmt(holdings.reduce(function(s,h){return s+(h.currentValue||h.value);},0)),color:C.teal,icon:"📈"}),
           e(KPI,{label:"Positions",value:holdings.length,color:C.purple,icon:"🗂️"}),
-          e(KPI,{label:"Accounts",value:[...new Set(holdings.map(function(h){return h.account;}))].length,color:C.teal,icon:"🏦"}),
           e(KPI,{label:"Live Prices",value:pLoad?"Loading...":Object.keys(prices).length+" fetched",color:C.orange,icon:"📡"})
         ),
-        e(Card,null,
-          e(SecTitle,{action:e("button",{onClick:function(){fetchPrices(holdings.map(function(h){return h.symbol;}));},style:{fontSize:11,background:"transparent",border:"1px solid "+C.border,borderRadius:6,color:C.textDim,padding:"4px 10px",fontFamily:"'JetBrains Mono',monospace"}},pLoad?"⟳ loading...":"↻ refresh prices")},"Holdings"),
-          holdings.length>0?e("table",{style:{width:"100%",borderCollapse:"collapse"}},
-            e("thead",null,e("tr",{style:{borderBottom:"1px solid "+C.border}},
-              ["Symbol","Name","Account","Cost Basis","Live Price","Day %","Gain/Loss"].map(function(h){return e("th",{key:h,style:{textAlign:"left",padding:"0 10px 14px",fontSize:10,letterSpacing:2,color:C.textMuted,textTransform:"uppercase",fontFamily:"'JetBrains Mono',monospace"}},h);})
-            )),
-            e("tbody",null,holdings.map(function(h,i){
-              var lp=prices[h.symbol],gain=h.value-h.cost,gp2=h.cost>0?((gain/h.cost)*100).toFixed(1):0;
-              return e("tr",{key:i,style:{borderBottom:"1px solid rgba(255,255,255,0.035)"},onMouseEnter:function(ev){ev.currentTarget.style.background=C.bgHover;},onMouseLeave:function(ev){ev.currentTarget.style.background="transparent";}},
-                e("td",{style:{padding:"12px 10px",color:C.gold,fontFamily:"'JetBrains Mono',monospace",fontWeight:600}},h.symbol),
-                e("td",{style:{padding:"12px 10px",color:C.text,fontSize:12,maxWidth:160,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}},h.name),
-                e("td",{style:{padding:"12px 10px"}},e("span",{style:{color:AC[h.account],fontSize:11}},(AI[h.account]||"")+" "+h.account)),
-                e("td",{style:{padding:"12px 10px",fontFamily:"'JetBrains Mono',monospace",color:C.textDim,fontSize:13}},fmt(h.cost)),
-                e("td",{style:{padding:"12px 10px",fontFamily:"'JetBrains Mono',monospace",color:lp?C.text:C.textMuted,fontSize:13}},lp?"$"+lp.price.toFixed(2):pLoad?"...":"—"),
-                e("td",{style:{padding:"12px 10px",fontFamily:"'JetBrains Mono',monospace",fontSize:13,color:lp?(lp.change>=0?C.teal:C.red):C.textMuted}},lp?fmtP(lp.change):"—"),
-                e("td",{style:{padding:"12px 10px",fontFamily:"'JetBrains Mono',monospace",color:gain>=0?C.teal:C.red,fontSize:13}},fmt(gain)+" ("+gp2+"%)")
+        holdings.length>0?e("div",null,
+          (function(){
+            var sections={};
+            holdings.forEach(function(h){
+              var sec=h.portfolioSection||h.account||"Other";
+              if(!sections[sec])sections[sec]=[];
+              sections[sec].push(h);
+            });
+            var sectionOrder=["Stocks Robinhood Portfolio","QQQ / SPY Hedge (Robinhood)","Metals/Materials Portfolio (Robinhood)","Mutual Funds (Venture Capital)","International ETFs (Robinhood)","International Stocks (Fidelity)","Fidelity","Robinhood","SoFi","Other"];
+            var ordered=sectionOrder.filter(function(s){return sections[s];}).concat(Object.keys(sections).filter(function(s){return sectionOrder.indexOf(s)===-1;}));
+            return ordered.map(function(sec){
+              var sh=sections[sec];
+              var secCurVal=sh.reduce(function(s,h){return s+(h.currentValue||h.value);},0);
+              var secCost=sh.reduce(function(s,h){return s+h.cost;},0);
+              var secGain=secCurVal-secCost;
+              return e(Card,{key:sec,style:{marginBottom:16}},
+                e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}},
+                  e("div",{style:{fontFamily:"'JetBrains Mono',monospace",fontSize:12,color:C.gold,letterSpacing:1}},sec),
+                  e("div",{style:{display:"flex",gap:24}},
+                    e("div",{style:{textAlign:"right"}},
+                      e("div",{style:{fontSize:10,color:C.textMuted,letterSpacing:1,textTransform:"uppercase",fontFamily:"'JetBrains Mono',monospace"}},"Cost"),
+                      e("div",{style:{fontSize:14,fontWeight:600,color:C.textDim,fontFamily:"'JetBrains Mono',monospace"}},fmt(secCost))
+                    ),
+                    e("div",{style:{textAlign:"right"}},
+                      e("div",{style:{fontSize:10,color:C.textMuted,letterSpacing:1,textTransform:"uppercase",fontFamily:"'JetBrains Mono',monospace"}},"Value"),
+                      e("div",{style:{fontSize:14,fontWeight:600,color:C.teal,fontFamily:"'JetBrains Mono',monospace"}},fmt(secCurVal))
+                    ),
+                    e("div",{style:{textAlign:"right"}},
+                      e("div",{style:{fontSize:10,color:C.textMuted,letterSpacing:1,textTransform:"uppercase",fontFamily:"'JetBrains Mono',monospace"}},"P/L"),
+                      e("div",{style:{fontSize:14,fontWeight:600,color:secGain>=0?C.teal:C.red,fontFamily:"'JetBrains Mono',monospace"}},(secGain>=0?"+":"")+fmt(secGain))
+                    )
+                  )
+                ),
+                e("table",{style:{width:"100%",borderCollapse:"collapse"}},
+                  e("thead",null,e("tr",{style:{borderBottom:"1px solid "+C.border}},
+                    ["Symbol","Name","Cost Basis","Current Value","Live Price","Day %","P/L ($)","P/L (%)"].map(function(h){return e("th",{key:h,style:{textAlign:h==="Symbol"||h==="Name"?"left":"right",padding:"0 10px 10px",fontSize:10,letterSpacing:1,color:C.textMuted,textTransform:"uppercase",fontFamily:"'JetBrains Mono',monospace"}},h);})
+                  )),
+                  e("tbody",null,sh.map(function(h,i){
+                    var lp=prices[h.symbol];
+                    var curVal=h.currentValue||h.value;
+                    var gain=curVal-h.cost;
+                    var gainPct=h.cost>0?((gain/h.cost)*100).toFixed(1):"0.0";
+                    var col=gain>=0?C.teal:C.red;
+                    return e("tr",{key:i,style:{borderBottom:"1px solid rgba(255,255,255,0.03)"},onMouseEnter:function(ev){ev.currentTarget.style.background=C.bgHover;},onMouseLeave:function(ev){ev.currentTarget.style.background="transparent";}},
+                      e("td",{style:{padding:"10px",color:C.gold,fontFamily:"'JetBrains Mono',monospace",fontWeight:600,fontSize:13}},h.symbol),
+                      e("td",{style:{padding:"10px",color:C.text,fontSize:12,maxWidth:140,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}},h.name),
+                      e("td",{style:{padding:"10px",fontFamily:"'JetBrains Mono',monospace",color:C.textDim,fontSize:12,textAlign:"right"}},fmt(h.cost)),
+                      e("td",{style:{padding:"10px",fontFamily:"'JetBrains Mono',monospace",color:C.teal,fontSize:12,textAlign:"right"}},fmt(curVal)),
+                      e("td",{style:{padding:"10px",fontFamily:"'JetBrains Mono',monospace",color:lp?C.text:C.textMuted,fontSize:12,textAlign:"right"}},lp?"$"+lp.price.toFixed(2):pLoad?"...":"—"),
+                      e("td",{style:{padding:"10px",fontFamily:"'JetBrains Mono',monospace",fontSize:12,color:lp?(lp.change>=0?C.teal:C.red):C.textMuted,textAlign:"right"}},lp?fmtP(lp.change):"—"),
+                      e("td",{style:{padding:"10px",fontFamily:"'JetBrains Mono',monospace",color:col,fontSize:12,textAlign:"right"}},(gain>=0?"+":"")+fmt(gain)),
+                      e("td",{style:{padding:"10px",fontFamily:"'JetBrains Mono',monospace",color:col,fontSize:12,textAlign:"right"}},(parseFloat(gainPct)>=0?"+":"")+gainPct+"%")
+                    );
+                  }))
+                )
               );
-            }))
-          ):e("div",{style:{textAlign:"center",padding:40,color:C.textDim}},"Import Fidelity, Robinhood, or Crypto CSVs to see holdings")
-        )
+            });
+          })(),
+          e("div",{style:{textAlign:"center",marginTop:8}},
+            e("button",{onClick:function(){fetchPrices(holdings.map(function(h){return h.symbol;}));},style:{fontSize:11,background:"transparent",border:"1px solid "+C.border,borderRadius:6,color:C.textDim,padding:"6px 16px",fontFamily:"'JetBrains Mono',monospace"}},pLoad?"⟳ loading...":"↻ refresh live prices")
+          )
+        ):e("div",{style:{textAlign:"center",padding:40,color:C.textDim}},"Import Robinhood or Fidelity CSV to see holdings")
       ),
-
       // GOALS
       tab==="goals"&&e("div",null,
         e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:24}},

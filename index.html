@@ -149,7 +149,7 @@ function parseBofA(text){
     else if(d.indexOf("ELECTRIC")!==-1||d.indexOf("COMCAST")!==-1||d.indexOf("AT&T")!==-1||d.indexOf("VERIZON")!==-1||d.indexOf("T-MOBILE")!==-1)cat="Utilities";
     else if(d.indexOf("PHARMACY")!==-1||d.indexOf("DOCTOR")!==-1||d.indexOf("GYM")!==-1||d.indexOf("FITNESS")!==-1)cat="Health";
     else if(d.indexOf("ZELLE")!==-1||d.indexOf("VENMO")!==-1||d.indexOf("PAYPAL")!==-1)cat="Transfers";
-    var txType=amt>0?"income":"expense";
+    var txType=amt>0?"income":cat==="Transfers"?"transfer":"expense";
     res.push({id:"BofA-"+i+"-"+Date.now(),date:nd(date),description:desc,amount:Math.abs(amt),type:txType,category:cat,account:"Bank of America",runningBalance:rb,endingBalance:eb});
   }
   return res;
@@ -383,24 +383,18 @@ function App(){
     var accounts=Object.keys(AI);
     var reparsed=0;
     var newTx=[];
-    var debugMsg="";
     accounts.forEach(function(acct){
       try{
         var raw=localStorage.getItem("fv_raw_"+acct);
-        if(!raw){debugMsg+="No raw CSV for: "+acct+"\n";return;}
+        if(!raw)return;
         var parsed=parse(raw,acct);
-        debugMsg+="Parsed "+parsed.length+" rows for: "+acct+"\n";
-        // Show first Robinhood transaction category
-        parsed.filter(function(t){return t.description.toUpperCase().indexOf("ROBINHOOD")!==-1;}).slice(0,2).forEach(function(t){
-          debugMsg+="  → "+t.description.slice(0,40)+" | cat: "+t.category+"\n";
-        });
         if(parsed.length){newTx=newTx.concat(parsed);reparsed++;}
-      }catch(x){debugMsg+="Error for "+acct+": "+x.message+"\n";}
+      }catch(x){}
     });
-    alert(debugMsg);
-    if(!reparsed){return;}
+    if(!reparsed){alert("No saved CSVs found. Please re-import your files.");return;}
     save("fv_tx",newTx);
     setTx(newTx);
+    alert("Re-parsed "+reparsed+" account(s) — "+newTx.length+" transactions updated!");
   }
 
   function clearAll(){
@@ -464,7 +458,7 @@ function App(){
   var bMos=[...new Set(bTx.map(function(t){return t.date.slice(0,7);}).filter(Boolean))].sort();
   var lMo=bMos[bMos.length-1]||"";
   var mInc=bTx.filter(function(t){return t.date.slice(0,7)===lMo&&t.description.toUpperCase().indexOf("GOOGLE")!==-1&&t.description.toUpperCase().indexOf("PAYROLL")!==-1;}).reduce(function(s,t){return s+t.amount;},0);
-  var mExp=bTx.filter(function(t){return t.type==="expense"&&t.category!=="Transfers"&&t.date.slice(0,7)===lMo;}).reduce(function(s,t){return s+t.amount;},0);
+  var mExp=bTx.filter(function(t){return t.type==="expense"&&t.date.slice(0,7)===lMo;}).reduce(function(s,t){return s+t.amount;},0);
   var mNet=mInc-mExp;
 
   var hMap={};
@@ -478,14 +472,14 @@ function App(){
   var holdings=Object.values(hMap).map(function(h){return Object.assign({},h,{value:Math.max(0,h.bought-h.sold),cost:h.bought});}).filter(function(h){return h.value>0;}).sort(function(a,b){return b.value-a.value;});
   var totInv=holdings.reduce(function(s,h){return s+h.cost;},0);
 
-  var expCat=Object.entries(fil.filter(function(t){return t.type==="expense"&&t.category!=="Transfers";}).reduce(function(a,t){a[t.category]=(a[t.category]||0)+t.amount;return a;},{})).map(function(x){return{name:x[0],value:x[1]};}).sort(function(a,b){return b.value-a.value;});
+  var expCat=Object.entries(fil.filter(function(t){return t.type==="expense";}).reduce(function(a,t){a[t.category]=(a[t.category]||0)+t.amount;return a;},{})).map(function(x){return{name:x[0],value:x[1]};}).sort(function(a,b){return b.value-a.value;});
 
   var byMo={};
   fil.forEach(function(t){
     var mo=t.date&&t.date.slice(0,7);if(!mo)return;
     if(!byMo[mo])byMo[mo]={month:mo,income:0,expenses:0,invested:0};
     if(t.type==="income")byMo[mo].income+=t.amount;
-    else if(t.type==="expense"&&t.category!=="Transfers")byMo[mo].expenses+=t.amount;
+    else if(t.type==="expense")byMo[mo].expenses+=t.amount;
     else if(t.type==="investment")byMo[mo].invested+=t.amount;
   });
   var cf=Object.values(byMo).sort(function(a,b){return a.month.localeCompare(b.month);}).slice(-6).map(function(m){return Object.assign({},m,{month:new Date(m.month+"-15").toLocaleDateString("en-US",{month:"short"})});});
@@ -654,14 +648,14 @@ function App(){
               ["Date","Description","Category","Account","Type","Amount"].map(function(h){return e("th",{key:h,style:{textAlign:h==="Amount"?"right":"left",padding:"0 12px 14px",fontSize:10,letterSpacing:2,color:C.textMuted,textTransform:"uppercase",fontFamily:"'JetBrains Mono',monospace"}},h);})
             )),
             e("tbody",null,fil.slice().sort(function(a,b){return b.date.localeCompare(a.date);}).map(function(t){
-              var col=t.type==="income"?C.teal:t.type==="investment"?C.gold:C.red;
+              var col=t.type==="income"?C.teal:t.type==="investment"?C.gold:t.type==="transfer"?C.textDim:C.red;
               return e("tr",{key:t.id,style:{borderBottom:"1px solid rgba(255,255,255,0.035)"},onMouseEnter:function(ev){ev.currentTarget.style.background=C.bgHover;},onMouseLeave:function(ev){ev.currentTarget.style.background="transparent";}},
                 e("td",{style:{padding:"12px",color:C.textDim,fontSize:12,fontFamily:"'JetBrains Mono',monospace"}},fmtD(t.date)),
                 e("td",{style:{padding:"12px",color:C.text,fontSize:13,maxWidth:220,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}},t.description),
                 e("td",{style:{padding:"12px"}},e("span",{style:{background:"rgba(255,255,255,0.05)",color:C.textDim,padding:"3px 10px",borderRadius:20,fontSize:11}},t.category)),
                 e("td",{style:{padding:"12px"}},e("span",{style:{color:AC[t.account],fontSize:12}},(AI[t.account]||"")+" "+t.account)),
                 e("td",{style:{padding:"12px",color:col,fontSize:11,textTransform:"capitalize"}},t.type),
-                e("td",{style:{padding:"12px",fontFamily:"'JetBrains Mono',monospace",fontWeight:600,fontSize:14,color:col,textAlign:"right"}},(t.type==="income"?"+":t.type==="investment"?"→ ":"-")+fmt(t.amount))
+                e("td",{style:{padding:"12px",fontFamily:"'JetBrains Mono',monospace",fontWeight:600,fontSize:14,color:col,textAlign:"right"}},(t.type==="income"?"+":t.type==="investment"?"→ ":t.type==="transfer"?"⇄ ":"-")+fmt(t.amount))
               );
             }))
           )

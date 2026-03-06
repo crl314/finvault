@@ -384,14 +384,23 @@ function App(){
     var p={};
     await Promise.all(syms.map(async function(sym){
       try{
-        var res=await fetch("https://api.allorigins.win/get?url="+encodeURIComponent("https://query2.finance.yahoo.com/v8/finance/chart/"+sym+"?interval=1d&range=5d"));
-        var outer=await res.json();var data=JSON.parse(outer.contents);
+        var url="https://query2.finance.yahoo.com/v8/finance/chart/"+sym+"?interval=1d&range=5d";
+        var res=await fetch("https://api.allorigins.win/get?url="+encodeURIComponent(url));
+        var outer=await res.json();
+        var data=JSON.parse(outer.contents);
         var meta=data&&data.chart&&data.chart.result&&data.chart.result[0]&&data.chart.result[0].meta;
-        if(meta&&meta.regularMarketPrice){var pr=meta.regularMarketPrice,pv=meta.chartPreviousClose||pr;p[sym]={price:pr,change:((pr-pv)/pv)*100};}
-      }catch(x){}
+        if(meta&&meta.regularMarketPrice){
+          var pr=meta.regularMarketPrice,pv=meta.chartPreviousClose||pr;
+          p[sym]={price:pr,change:((pr-pv)/pv)*100};
+        }
+      }catch(x){console.warn("Price fetch failed for",sym,x);}
     }));
-    setPrices(p);setPLoad(false);
+    setPrices(function(prev){return Object.assign({},prev,p);});
+    setPLoad(false);
   },[]);
+
+  // Always fetch GOOG on mount for vested shares KPI
+  useEffect(function(){ fetchPrices(["GOOG"]); },[]);
 
   useEffect(function(){
     var syms=[...new Set(tx.filter(function(t){return t.type==="investment";}).map(function(t){
@@ -459,9 +468,11 @@ function App(){
 
   // ── Vested GOOG ──
   var VESTED_SHARES = 39;
+  var UNVESTED_SHARES = 565;
   var googPrice = prices["GOOG"] ? prices["GOOG"].price : null;
   var googChange = prices["GOOG"] ? prices["GOOG"].change : null;
   var vestedValue = googPrice ? VESTED_SHARES * googPrice : null;
+  var unvestedValue = googPrice ? UNVESTED_SHARES * googPrice : null;
 
   // ── Tabs ──
   var TABS=["overview","earnings","transactions","investments","goals","import"];
@@ -500,11 +511,12 @@ function App(){
 
       // OVERVIEW
       tab==="overview"&&e("div",null,
-        e("div",{style:{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:16,marginBottom:24}},
+        e("div",{style:{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:16,marginBottom:24}},
           e(KPI,{label:"Bank Balance",value:bankBal!=null?fmt(bankBal):"—",sub:"Bank of America",color:C.bofa,icon:"🏦"}),
           e(KPI,{label:"Monthly Income",value:fmt(mInc),sub:lMo+" · Google Payroll",color:C.teal,icon:"📈"}),
           e(KPI,{label:"Monthly Expenses",value:fmt(mExp),sub:lMo,trend:-1,color:C.red,icon:"💸"}),
           e(KPI,{label:"Vested $GOOG ("+VESTED_SHARES+" shares)",value:vestedValue!=null?fmt(vestedValue):"Loading...",sub:googPrice!=null?"$"+googPrice.toFixed(2)+" per share"+(googChange!=null?" · "+(googChange>=0?"▲":"▼")+Math.abs(googChange).toFixed(2)+"%":""):"Fetching live price...",trend:googChange,color:"#4285F4",icon:"📦"}),
+          e(KPI,{label:"Unvested $GOOG ("+UNVESTED_SHARES+" shares)",value:unvestedValue!=null?fmt(unvestedValue):"Loading...",sub:googPrice!=null?"$"+googPrice.toFixed(2)+" per share"+(googChange!=null?" · "+(googChange>=0?"▲":"▼")+Math.abs(googChange).toFixed(2)+"%":""):"Fetching live price...",trend:googChange,color:"#34A853",icon:"🔒"}),
           e(KPI,{label:"Net Savings",value:fmt(mNet),trend:mNet,sub:mInc>0?Math.round((mNet/mInc)*100)+"% savings rate":"",color:C.purple,icon:"💰"}),
           e(KPI,{label:"Invested",value:fmt(totInv),sub:holdings.length+" positions",color:C.orange,icon:"📊"})
         ),

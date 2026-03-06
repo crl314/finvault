@@ -383,18 +383,24 @@ function App(){
     var accounts=Object.keys(AI);
     var reparsed=0;
     var newTx=[];
+    var debugMsg="";
     accounts.forEach(function(acct){
       try{
         var raw=localStorage.getItem("fv_raw_"+acct);
-        if(!raw)return;
+        if(!raw){debugMsg+="No raw CSV for: "+acct+"\n";return;}
         var parsed=parse(raw,acct);
+        debugMsg+="Parsed "+parsed.length+" rows for: "+acct+"\n";
+        // Show first Robinhood transaction category
+        parsed.filter(function(t){return t.description.toUpperCase().indexOf("ROBINHOOD")!==-1;}).slice(0,2).forEach(function(t){
+          debugMsg+="  → "+t.description.slice(0,40)+" | cat: "+t.category+"\n";
+        });
         if(parsed.length){newTx=newTx.concat(parsed);reparsed++;}
-      }catch(x){}
+      }catch(x){debugMsg+="Error for "+acct+": "+x.message+"\n";}
     });
-    if(!reparsed){alert("No saved CSVs found. Please re-import your files.");return;}
+    alert(debugMsg);
+    if(!reparsed){return;}
     save("fv_tx",newTx);
     setTx(newTx);
-    alert("Re-parsed "+reparsed+" account(s) — "+newTx.length+" transactions updated!");
   }
 
   function clearAll(){

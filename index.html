@@ -148,7 +148,8 @@ function parseBofA(text){
     else if(d.indexOf("ELECTRIC")!==-1||d.indexOf("COMCAST")!==-1||d.indexOf("AT&T")!==-1||d.indexOf("VERIZON")!==-1||d.indexOf("T-MOBILE")!==-1)cat="Utilities";
     else if(d.indexOf("PHARMACY")!==-1||d.indexOf("DOCTOR")!==-1||d.indexOf("GYM")!==-1||d.indexOf("FITNESS")!==-1)cat="Health";
     else if(d.indexOf("ZELLE")!==-1||d.indexOf("VENMO")!==-1||d.indexOf("PAYPAL")!==-1)cat="Transfers";
-    res.push({id:"BofA-"+i+"-"+Date.now(),date:nd(date),description:desc,amount:Math.abs(amt),type:amt>0?"income":"expense",category:cat,account:"Bank of America",runningBalance:rb,endingBalance:eb});
+    var txType=amt>0?"income":cat==="Investments"?"investment":"expense";
+    res.push({id:"BofA-"+i+"-"+Date.now(),date:nd(date),description:desc,amount:Math.abs(amt),type:txType,category:cat,account:"Bank of America",runningBalance:rb,endingBalance:eb});
   }
   return res;
 }
@@ -383,24 +384,37 @@ function App(){
     if(!syms.length)return;setPLoad(true);
     var p={};
     await Promise.all(syms.map(async function(sym){
-      try{
-        var url="https://query2.finance.yahoo.com/v8/finance/chart/"+sym+"?interval=1d&range=5d";
-        var res=await fetch("https://api.allorigins.win/get?url="+encodeURIComponent(url));
-        var outer=await res.json();
-        var data=JSON.parse(outer.contents);
-        var meta=data&&data.chart&&data.chart.result&&data.chart.result[0]&&data.chart.result[0].meta;
-        if(meta&&meta.regularMarketPrice){
-          var pr=meta.regularMarketPrice,pv=meta.chartPreviousClose||pr;
-          p[sym]={price:pr,change:((pr-pv)/pv)*100};
-        }
-      }catch(x){console.warn("Price fetch failed for",sym,x);}
+      // Try multiple endpoints in order
+      var endpoints=[
+        "https://api.allorigins.win/get?url="+encodeURIComponent("https://query2.finance.yahoo.com/v8/finance/chart/"+sym+"?interval=1d&range=5d"),
+        "https://api.codetabs.com/v1/proxy?quest="+encodeURIComponent("https://query1.finance.yahoo.com/v8/finance/chart/"+sym+"?interval=1d&range=5d"),
+      ];
+      for(var ei=0;ei<endpoints.length;ei++){
+        try{
+          var res=await fetch(endpoints[ei]);
+          if(!res.ok)continue;
+          var text=await res.text();
+          var data=JSON.parse(text.indexOf("contents")>-1?JSON.parse(text).contents:text);
+          var meta=data&&data.chart&&data.chart.result&&data.chart.result[0]&&data.chart.result[0].meta;
+          if(meta&&meta.regularMarketPrice){
+            var pr=meta.regularMarketPrice,pv=meta.chartPreviousClose||pr;
+            p[sym]={price:pr,change:((pr-pv)/pv)*100};
+            break;
+          }
+        }catch(x){console.warn("Endpoint",ei,"failed for",sym,x);}
+      }
     }));
     setPrices(function(prev){return Object.assign({},prev,p);});
     setPLoad(false);
   },[]);
 
   // Always fetch GOOG on mount for vested shares KPI
-  useEffect(function(){ fetchPrices(["GOOG"]); },[]);
+  var [priceError,setPriceError]=useState(false);
+  useEffect(function(){
+    var timer=setTimeout(function(){setPriceError(true);},10000);
+    fetchPrices(["GOOG"]).then(function(){clearTimeout(timer);});
+    return function(){clearTimeout(timer);};
+  },[]);
 
   useEffect(function(){
     var syms=[...new Set(tx.filter(function(t){return t.type==="investment";}).map(function(t){
@@ -515,8 +529,8 @@ function App(){
           e(KPI,{label:"Bank Balance",value:bankBal!=null?fmt(bankBal):"—",sub:"Bank of America",color:C.bofa,icon:"🏦"}),
           e(KPI,{label:"Monthly Income",value:fmt(mInc),sub:lMo+" · Google Payroll",color:C.teal,icon:"📈"}),
           e(KPI,{label:"Monthly Expenses",value:fmt(mExp),sub:lMo,trend:-1,color:C.red,icon:"💸"}),
-          e(KPI,{label:"Vested $GOOG ("+VESTED_SHARES+" shares)",value:vestedValue!=null?fmt(vestedValue):"Loading...",sub:googPrice!=null?"$"+googPrice.toFixed(2)+" per share"+(googChange!=null?" · "+(googChange>=0?"▲":"▼")+Math.abs(googChange).toFixed(2)+"%":""):"Fetching live price...",trend:googChange,color:"#4285F4",icon:"📦"}),
-          e(KPI,{label:"Unvested $GOOG ("+UNVESTED_SHARES+" shares)",value:unvestedValue!=null?fmt(unvestedValue):"Loading...",sub:googPrice!=null?"$"+googPrice.toFixed(2)+" per share"+(googChange!=null?" · "+(googChange>=0?"▲":"▼")+Math.abs(googChange).toFixed(2)+"%":""):"Fetching live price...",trend:googChange,color:"#34A853",icon:"🔒"}),
+          e(KPI,{label:"Vested $GOOG ("+VESTED_SHARES+" shares)",value:vestedValue!=null?fmt(vestedValue):priceError?"Unavailable":"Loading...",sub:googPrice!=null?"$"+googPrice.toFixed(2)+" per share"+(googChange!=null?" · "+(googChange>=0?"▲":"▼")+Math.abs(googChange).toFixed(2)+"%":""):"Fetching live price...",trend:googChange,color:"#4285F4",icon:"📦"}),
+          e(KPI,{label:"Unvested $GOOG ("+UNVESTED_SHARES+" shares)",value:unvestedValue!=null?fmt(unvestedValue):priceError?"Unavailable":"Loading...",sub:googPrice!=null?"$"+googPrice.toFixed(2)+" per share"+(googChange!=null?" · "+(googChange>=0?"▲":"▼")+Math.abs(googChange).toFixed(2)+"%":""):"Fetching live price...",trend:googChange,color:"#34A853",icon:"🔒"}),
           e(KPI,{label:"Net Savings",value:fmt(mNet),trend:mNet,sub:mInc>0?Math.round((mNet/mInc)*100)+"% savings rate":"",color:C.purple,icon:"💰"}),
           e(KPI,{label:"Invested",value:fmt(totInv),sub:holdings.length+" positions",color:C.orange,icon:"📊"})
         ),

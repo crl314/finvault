@@ -259,10 +259,92 @@ function parseRobinhood(text){
   return res;
 }
 
+function parsePortfolio(text){
+  // Parses Caue's custom multi-section portfolio CSV
+  var lines=normLines(text).map(function(l){return l.trim();});
+  var res=[];
+  var today=new Date().toISOString().slice(0,10);
+
+  function cleanUSD(s){
+    if(!s)return 0;
+    var v=s.replace(/US\$|,|\s/g,"").replace(/[()]/g,"");
+    var n=parseFloat(v);
+    return isNaN(n)?0:n;
+  }
+
+  // Account mapping based on section headers
+  var ACCOUNT_MAP={
+    "robinhood":"Robinhood","fidelity":"Fidelity","sofi":"SoFi","fundrise":"Robinhood"
+  };
+
+  var currentAccount="Robinhood";
+  var inDataSection=false;
+  var hdrs=[];
+
+  for(var i=0;i<lines.length;i++){
+    var line=lines[i];
+    if(!line)continue;
+    var cols=csvRow(line);
+    var first=(cols[0]||"").trim();
+
+    // Section header detection (e.g. "Stocks Robinhood Portfolio")
+    if(cols.filter(function(c){return c.trim();}).length<=3&&first&&first!=="Ticker"){
+      var fl=first.toLowerCase();
+      inDataSection=false;
+      hdrs=[];
+      if(fl.indexOf("fidelity")!==-1)currentAccount="Fidelity";
+      else if(fl.indexOf("sofi")!==-1)currentAccount="SoFi";
+      else currentAccount="Robinhood";
+      continue;
+    }
+
+    // Header row detection
+    if(first==="Ticker"||first==="ticker"){
+      hdrs=cols.map(function(h){return h.trim().toLowerCase();});
+      inDataSection=true;
+      continue;
+    }
+
+    if(!inDataSection||!hdrs.length)continue;
+    if(first==="TOTAL"||first==="total"||!first)continue;
+    if(first==="#REF!"||first==="Innovation Fund")continue;
+
+    var obj={};
+    hdrs.forEach(function(h,idx){obj[h]=(cols[idx]||"").trim();});
+
+    var sym=first.toUpperCase();
+    var name=obj["portfolio"]||obj["instrument"]||sym;
+    var cost=cleanUSD(obj["average value (usd)"]||obj["average value"]||"0");
+    var currentVal=cleanUSD(obj["current value (usd)"]||obj["current value"]||"0");
+    var qty=parseFloat(obj["qty"]||"0")||0;
+
+    if(!sym||sym==="TOTAL"||cost===0)continue;
+
+    // Create a synthetic buy transaction so hMap picks it up
+    res.push({
+      id:"PF-"+sym+"-"+Date.now(),
+      date:today,
+      description:sym+" — "+name,
+      amount:cost,
+      type:"investment",
+      category:"Buy",
+      account:currentAccount,
+      symbol:sym,
+      qty:qty,
+      currentValue:currentVal
+    });
+  }
+  return res;
+}
+
 function parse(text,acct){
   if(acct==="Bank of America")return parseBofA(text);
   if(acct==="Fidelity")return parseFidelity(text);
-  if(acct==="Robinhood")return parseRobinhood(text);
+  if(acct==="Robinhood"){
+    // Auto-detect: if has "Ticker" column it's the custom portfolio CSV
+    if(text.indexOf("Average Value")!==-1||text.indexOf("Stocks Robinhood")!==-1)return parsePortfolio(text);
+    return parseRobinhood(text);
+  }
   return parseGeneric(text,acct);
 }
 
@@ -574,7 +656,7 @@ function App(){
       e("div",{style:{maxWidth:1400,margin:"0 auto",display:"flex",alignItems:"center",justifyContent:"space-between",height:64}},
         e("div",null,
           e("span",{style:{fontFamily:"'Playfair Display',serif",fontSize:20,color:C.gold}},"◈ FINVAULT"),
-          e("span",{style:{fontSize:10,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace",marginLeft:8}},"v1.5"),
+          e("span",{style:{fontSize:10,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace",marginLeft:8}},"v1.6"),
           e("span",{style:{marginLeft:12,fontSize:11,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace"}},"PERSONAL WEALTH OS")
         ),
         e("div",{style:{display:"flex",gap:2,background:"rgba(255,255,255,0.03)",borderRadius:10,padding:4,border:"1px solid rgba(255,255,255,0.06)"}},

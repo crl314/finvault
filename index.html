@@ -217,9 +217,50 @@ function parseGeneric(text,acct){
   return res;
 }
 
+function parseRobinhood(text){
+  var lines=normLines(text).filter(function(l){return l.trim();});
+  if(lines.length<2)return[];
+  var hdrs=csvRow(lines[0]).map(function(h){return h.trim().toLowerCase();});
+  var res=[];
+  for(var i=1;i<lines.length;i++){
+    var cols=csvRow(lines[i]);
+    var obj={};hdrs.forEach(function(h,idx){obj[h]=(cols[idx]||"").trim();});
+    var code=(obj["trans code"]||"").trim();
+    var sym=(obj["instrument"]||"").trim();
+    var descRaw=(obj["description"]||sym).split("\n")[0].trim();
+    // Strip CUSIP lines
+    var desc=descRaw.replace(/CUSIP:.*/i,"").trim()||sym;
+    var date=nd(obj["activity date"]||obj["process date"]||"");
+    if(!date)continue;
+    // Parse amount - Robinhood uses ($10.00) for debits, $10.00 for credits
+    var amtRaw=(obj["amount"]||"0").replace(/[(),\s]/g,"").replace("$","");
+    var isNeg=(obj["amount"]||"").indexOf("(")!==-1;
+    var amt=parseFloat(amtRaw)*(isNeg?-1:1);
+    if(isNaN(amt))amt=0;
+    var qty=parseFloat(obj["quantity"]||"0")||0;
+    var price=parseFloat((obj["price"]||"0").replace(/[$,]/g,""))||0;
+
+    // Buy/sell transactions → investment type
+    if(code==="Buy"||code==="BTO"){
+      if(!sym)continue;
+      res.push({id:"RH-"+i+"-"+Date.now(),date:date,description:sym+" — "+desc,amount:Math.abs(amt),type:"investment",category:"Buy",account:"Robinhood",symbol:sym,qty:qty,price:price});
+    } else if(code==="Sell"||code==="STC"||code==="BTC"){
+      if(!sym)continue;
+      res.push({id:"RH-"+i+"-"+Date.now(),date:date,description:sym+" — "+desc,amount:Math.abs(amt),type:"investment",category:"Sell",account:"Robinhood",symbol:sym,qty:qty,price:price});
+    } else if(code==="RTP"||code==="ACH"){
+      // Bank transfers - skip, already tracked in BofA
+    } else if(code==="MINT"){
+      // Dividends/interest
+      if(amt>0) res.push({id:"RH-"+i+"-"+Date.now(),date:date,description:(sym?sym+" — ":"")+desc,amount:amt,type:"income",category:"Dividend",account:"Robinhood"});
+    }
+  }
+  return res;
+}
+
 function parse(text,acct){
   if(acct==="Bank of America")return parseBofA(text);
   if(acct==="Fidelity")return parseFidelity(text);
+  if(acct==="Robinhood")return parseRobinhood(text);
   return parseGeneric(text,acct);
 }
 

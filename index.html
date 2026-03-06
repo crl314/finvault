@@ -398,7 +398,9 @@ function App(){
       var d=t.description;var idx=d.indexOf(" —");if(idx>0)return d.slice(0,idx).toUpperCase();
       return d.split(" ")[0].toUpperCase().slice(0,6);
     }))];
-    if(syms.length)fetchPrices(syms);
+    // Always fetch GOOG for vested shares KPI
+    if(syms.indexOf("GOOG")===-1)syms.push("GOOG");
+    fetchPrices(syms);
   },[tx]);
 
   // ── Computed ──
@@ -455,6 +457,13 @@ function App(){
   var totalGoogle=allEarningsTx.filter(function(t){var d=t.description.toUpperCase();return d.indexOf("GOOGLE")!==-1&&d.indexOf("PAYROLL")!==-1;}).reduce(function(s,t){return s+t.amount;},0);
   var totalMorgan=allEarningsTx.filter(function(t){return t.description.toUpperCase().indexOf("MORGAN STANLEY")!==-1;}).reduce(function(s,t){return s+t.amount;},0);
 
+  // ── Vested GOOG ──
+  var VESTED_SHARES = 39;
+  var googPrice = prices["GOOG"] ? prices["GOOG"].price : null;
+  var googChange = prices["GOOG"] ? prices["GOOG"].change : null;
+  var vestedValue = googPrice ? VESTED_SHARES * googPrice : null;
+
+  // ── Tabs ──
   var TABS=["overview","earnings","transactions","investments","goals","import"];
   function ns(a){return{padding:"8px 18px",borderRadius:8,border:"none",cursor:"pointer",fontSize:12,fontWeight:500,background:a?C.goldGlow:"transparent",color:a?C.gold:C.textDim,borderBottom:a?"2px solid "+C.gold:"2px solid transparent",transition:"all 0.2s"};}
   var inp={width:"100%",background:"rgba(255,255,255,0.05)",border:"1px solid "+C.border,borderRadius:8,padding:"10px 12px",color:C.text,fontSize:14,outline:"none",boxSizing:"border-box"};
@@ -491,10 +500,11 @@ function App(){
 
       // OVERVIEW
       tab==="overview"&&e("div",null,
-        e("div",{style:{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:16,marginBottom:24}},
+        e("div",{style:{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:16,marginBottom:24}},
           e(KPI,{label:"Bank Balance",value:bankBal!=null?fmt(bankBal):"—",sub:"Bank of America",color:C.bofa,icon:"🏦"}),
           e(KPI,{label:"Monthly Income",value:fmt(mInc),sub:lMo+" · Google Payroll",color:C.teal,icon:"📈"}),
           e(KPI,{label:"Monthly Expenses",value:fmt(mExp),sub:lMo,trend:-1,color:C.red,icon:"💸"}),
+          e(KPI,{label:"Vested $GOOG ("+VESTED_SHARES+" shares)",value:vestedValue!=null?fmt(vestedValue):"Loading...",sub:googPrice!=null?"$"+googPrice.toFixed(2)+" per share"+(googChange!=null?" · "+(googChange>=0?"▲":"▼")+Math.abs(googChange).toFixed(2)+"%":""):"Fetching live price...",trend:googChange,color:"#4285F4",icon:"📦"}),
           e(KPI,{label:"Net Savings",value:fmt(mNet),trend:mNet,sub:mInc>0?Math.round((mNet/mInc)*100)+"% savings rate":"",color:C.purple,icon:"💰"}),
           e(KPI,{label:"Invested",value:fmt(totInv),sub:holdings.length+" positions",color:C.orange,icon:"📊"})
         ),

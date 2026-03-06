@@ -323,8 +323,11 @@ function ImportZone({onImport}){
     if(!file)return;
     var r=new FileReader();
     r.onload=function(ev){
-      var parsed=parse(ev.target.result,acct);
+      var raw=ev.target.result;
+      var parsed=parse(raw,acct);
       if(!parsed.length){setStatus(function(s){return Object.assign({},s,{[acct]:{ok:false,msg:"No valid rows found"}});});return;}
+      // Save raw CSV for re-parsing later
+      try{localStorage.setItem("fv_raw_"+acct,raw);}catch(x){}
       onImport(parsed,acct);
       setStatus(function(s){return Object.assign({},s,{[acct]:{ok:true,msg:"✓ "+parsed.length+" rows"}});});
     };
@@ -375,10 +378,31 @@ function App(){
   },[]);
 
   function saveGoals(u){save("fv_goals",u);setGoals(u);}
+
+  function reparse(){
+    var accounts=Object.keys(AI);
+    var reparsed=0;
+    var newTx=[];
+    accounts.forEach(function(acct){
+      try{
+        var raw=localStorage.getItem("fv_raw_"+acct);
+        if(!raw)return;
+        var parsed=parse(raw,acct);
+        if(parsed.length){newTx=newTx.concat(parsed);reparsed++;}
+      }catch(x){}
+    });
+    if(!reparsed){alert("No saved CSVs found. Please re-import your files.");return;}
+    save("fv_tx",newTx);
+    setTx(newTx);
+    alert("Re-parsed "+reparsed+" account(s) — "+newTx.length+" transactions updated!");
+  }
+
   function clearAll(){
     if(!window.confirm("Reset to sample data?"))return;
     localStorage.removeItem("fv_tx");localStorage.removeItem("fv_goals");
+    Object.keys(AI).forEach(function(acct){localStorage.removeItem("fv_raw_"+acct);});
     setTx(STX);setGoals(SG);setPrices({});
+  }
   }
 
   var fetchPrices=useCallback(async function(syms){
@@ -509,6 +533,7 @@ function App(){
         ),
         e("div",{style:{display:"flex",alignItems:"center",gap:12}},
           e("span",{style:{fontSize:12,color:C.textDim,fontFamily:"'JetBrains Mono',monospace"}},tx.length+" records ",e("span",{style:{color:C.teal}},"● saved")),
+          e("button",{onClick:reparse,style:{fontSize:11,background:"transparent",border:"1px solid "+C.teal,borderRadius:6,color:C.teal,padding:"3px 8px",fontFamily:"'JetBrains Mono',monospace"}},"↻ re-parse"),
           e("button",{onClick:clearAll,style:{fontSize:11,background:"transparent",border:"1px solid "+C.border,borderRadius:6,color:C.textMuted,padding:"3px 8px"}},"reset")
         )
       )

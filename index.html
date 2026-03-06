@@ -64,14 +64,16 @@ function csvRow(line){
   return res;
 }
 
-// Normalize line endings
+// Normalize line endings - handles quoted multiline fields
 function normLines(text){
-  var out=[];var cur="";
+  var out=[],cur="",inQ=false;
   for(var i=0;i<text.length;i++){
     var c=text[i];
-    if(c==="\r"){out.push(cur);cur="";if(text[i+1]==="\n")i++;}
-    else if(c==="\n"){out.push(cur);cur="";}
-    else{cur+=c;}
+    if(c==='"'){inQ=!inQ;cur+=c;}
+    else if(!inQ&&(c==='\r'||c==='\n')){
+      if(c==='\r'&&text[i+1]==='\n')i++;
+      out.push(cur);cur="";
+    } else {cur+=c;}
   }
   if(cur.length)out.push(cur);
   return out;

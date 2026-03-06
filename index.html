@@ -403,7 +403,6 @@ function App(){
     Object.keys(AI).forEach(function(acct){localStorage.removeItem("fv_raw_"+acct);});
     setTx(STX);setGoals(SG);setPrices({});
   }
-  }
 
   var fetchPrices=useCallback(async function(syms){
     if(!syms.length)return;setPLoad(true);

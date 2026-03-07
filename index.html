@@ -686,7 +686,7 @@ function App(){
       e("div",{style:{maxWidth:1400,margin:"0 auto",display:"flex",alignItems:"center",justifyContent:"space-between",height:64}},
         e("div",null,
           e("span",{style:{fontFamily:"'Playfair Display',serif",fontSize:20,color:C.gold}},"◈ FINVAULT"),
-          e("span",{style:{fontSize:10,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace",marginLeft:8}},"v2.9"),
+          e("span",{style:{fontSize:10,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace",marginLeft:8}},"v3.0"),
           e("span",{style:{marginLeft:12,fontSize:11,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace"}},"PERSONAL WEALTH OS")
         ),
         e("div",{style:{display:"flex",gap:2,background:"rgba(255,255,255,0.03)",borderRadius:10,padding:4,border:"1px solid rgba(255,255,255,0.06)"}},
@@ -871,7 +871,8 @@ function App(){
             // ── Top Movers ──
             var withChange=holdings.map(function(h){
               var disp=prices[h.symbol]||(h.csvPrice?{price:h.csvPrice,change:h.csvPlPct,fromCsv:true}:null);
-              return Object.assign({},h,{dispPrice:disp,dayChange:disp?disp.change:null});
+              var dayChange=disp?disp.change:(h.csvPlPct!==0?h.csvPlPct:null);
+              return Object.assign({},h,{dispPrice:disp,dayChange:dayChange});
             }).filter(function(h){return h.dayChange!==null;});
             var topGainers=withChange.slice().sort(function(a,b){return b.dayChange-a.dayChange;}).slice(0,3);
             var topLosers=withChange.slice().sort(function(a,b){return a.dayChange-b.dayChange;}).slice(0,3);
@@ -887,7 +888,7 @@ function App(){
                 ),
                 e("div",{style:{textAlign:"right"}},
                   e("div",{style:{fontSize:14,fontWeight:700,color:col,fontFamily:"'JetBrains Mono',monospace"}},(h.dayChange>=0?"+":"")+h.dayChange.toFixed(2)+"%"),
-                  e("div",{style:{fontSize:11,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace"}},"$"+h.dispPrice.price.toFixed(2)+(h.dispPrice.fromCsv?" · CSV":""))
+                  e("div",{style:{fontSize:11,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace"}},h.dispPrice?"$"+h.dispPrice.price.toFixed(2)+(h.dispPrice.fromCsv?" · CSV":""):"P&L overall")
                 )
               );
             }

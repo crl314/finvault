@@ -507,6 +507,11 @@ function App(){
   var [prices,setPrices]=useState({});
   var [pLoad,setPLoad]=useState(false);
   var [showGF,setShowGF]=useState(false);
+  var [txSearch,setTxSearch]=useState("");
+  var [txTypeFilter,setTxTypeFilter]=useState("All");
+  var [txCatFilter,setTxCatFilter]=useState("All");
+  var [txDateFrom,setTxDateFrom]=useState("");
+  var [txDateTo,setTxDateTo]=useState("");
   var [newG,setNewG]=useState({name:"",target:"",current:"",deadline:"",icon:"🎯"});
 
   var doImport=useCallback(function(parsed,acct){
@@ -674,8 +679,29 @@ function App(){
     else if(t.type==="expense")byMo[mo].expenses+=t.amount;
     else if(t.type==="investment")byMo[mo].invested+=t.amount;
   });
+  // Transaction tab filtered list
+  var txFil=fil.slice().sort(function(a,b){return b.date.localeCompare(a.date);}).filter(function(t){
+    if(txTypeFilter!=="All"&&t.type!==txTypeFilter)return false;
+    if(txCatFilter!=="All"&&t.category!==txCatFilter)return false;
+    if(txDateFrom&&t.date<txDateFrom)return false;
+    if(txDateTo&&t.date>txDateTo)return false;
+    if(txSearch){var s=txSearch.toLowerCase();if(t.description.toLowerCase().indexOf(s)===-1&&t.category.toLowerCase().indexOf(s)===-1)return false;}
+    return true;
+  });
+  var txCategories=["All",...new Set(fil.map(function(t){return t.category;}).filter(Boolean).sort())];
+
   var cf=Object.values(byMo).sort(function(a,b){return a.month.localeCompare(b.month);}).slice(-6).map(function(m){return Object.assign({},m,{month:new Date(m.month+"-15").toLocaleDateString("en-US",{month:"short"})});});
-  var hByAcc=Object.entries(grp(holdings,"account")).map(function(x){return{name:x[0],value:x[1].reduce(function(s,h){return s+h.value;},0)};});
+  var hByAcc=Object.entries(grp(holdings,"account")).map(function(x){return{name:x[0],value:x[1].reduce(function(s,h){return s+(h.currentValue||h.value);},0)};});
+  var totalPortfolioValue=holdings.reduce(function(s,h){return s+(h.currentValue||h.value);},0);
+  var netWorthNow=(bankBal||0)+totalPortfolioValue;
+  // Build monthly net worth from cumulative invested + bank balance over time
+  var nwByMo=Object.values(byMo).sort(function(a,b){return a.month.localeCompare(b.month);}).map(function(m,i,arr){
+    var cumSaved=arr.slice(0,i+1).reduce(function(s,x){return s+(x.income-x.expenses);},0);
+    var cumInvested=arr.slice(0,i+1).reduce(function(s,x){return s+x.invested;},0);
+    return {month:new Date(m.month+"-15").toLocaleDateString("en-US",{month:"short",year:"2-digit"}),value:Math.max(0,cumSaved+cumInvested)};
+  });
+  // If we have real data use it, otherwise placeholder
+  var SNW=nwByMo.length>1?nwByMo:[{month:"Start",value:0},{month:"Now",value:netWorthNow}];
 
   // ── Earnings computed ──
   var allEarningsTx=tx.filter(function(t){
@@ -717,7 +743,7 @@ function App(){
       e("div",{style:{maxWidth:1400,margin:"0 auto",display:"flex",alignItems:"center",justifyContent:"space-between",height:64}},
         e("div",null,
           e("span",{style:{fontFamily:"'Playfair Display',serif",fontSize:20,color:C.gold}},"◈ FINVAULT"),
-          e("span",{style:{fontSize:10,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace",marginLeft:8}},"v2.3"),
+          e("span",{style:{fontSize:10,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace",marginLeft:8}},"v2.4"),
           e("span",{style:{marginLeft:12,fontSize:11,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace"}},"PERSONAL WEALTH OS")
         ),
         e("div",{style:{display:"flex",gap:2,background:"rgba(255,255,255,0.03)",borderRadius:10,padding:4,border:"1px solid rgba(255,255,255,0.06)"}},
@@ -750,10 +776,13 @@ function App(){
           e(KPI,{label:"Vested $GOOG ("+VESTED_SHARES+" shares)",value:vestedValue!=null?fmt(vestedValue):priceError?"Unavailable":"Loading...",sub:googPrice!=null?"$"+googPrice.toFixed(2)+" per share"+(googChange!=null?" · "+(googChange>=0?"▲":"▼")+Math.abs(googChange).toFixed(2)+"%":""):"Fetching live price...",trend:googChange,color:"#4285F4",icon:"📦"}),
           e(KPI,{label:"Unvested $GOOG ("+UNVESTED_SHARES+" shares)",value:unvestedValue!=null?fmt(unvestedValue):priceError?"Unavailable":"Loading...",sub:googPrice!=null?"$"+googPrice.toFixed(2)+" per share"+(googChange!=null?" · "+(googChange>=0?"▲":"▼")+Math.abs(googChange).toFixed(2)+"%":""):"Fetching live price...",trend:googChange,color:"#34A853",icon:"🔒"}),
           e(KPI,{label:"Net Savings",value:fmt(mNet),trend:mNet,sub:mInc>0?Math.round((mNet/mInc)*100)+"% savings rate":"",color:C.purple,icon:"💰"}),
-          e(KPI,{label:"Invested",value:fmt(totInv),sub:holdings.length+" positions",color:C.orange,icon:"📊"})
+          e(KPI,{label:"Net Worth",value:fmt(netWorthNow),sub:"Bank + Portfolio",color:C.orange,icon:"🏆"})
         ),
         e("div",{style:{display:"grid",gridTemplateColumns:"2fr 1fr",gap:20,marginBottom:20}},
-          e(Card,null,e(SecTitle,null,"Net Worth Over Time"),e(AreaChart,{data:SNW,dataKey:"value",color:C.gold,height:200})),
+          e(Card,null,
+            e(SecTitle,{action:e("span",{style:{fontSize:13,color:C.gold,fontFamily:"'JetBrains Mono',monospace",fontWeight:600}},fmt(netWorthNow))},"Net Worth Over Time"),
+            e(AreaChart,{data:SNW,dataKey:"value",color:C.gold,height:200})
+          ),
           e(Card,null,
             e(SecTitle,null,"Portfolio Allocation"),
             hByAcc.length>0?e("div",null,
@@ -832,25 +861,57 @@ function App(){
       ),
 
       // TRANSACTIONS
-      tab==="transactions"&&e(Card,null,
-        e(SecTitle,null,"Transactions ("+fil.length+")"),
-        e("div",{style:{overflowX:"auto"}},
-          e("table",{style:{width:"100%",borderCollapse:"collapse"}},
-            e("thead",null,e("tr",{style:{borderBottom:"1px solid "+C.border}},
-              ["Date","Description","Category","Account","Type","Amount"].map(function(h){return e("th",{key:h,style:{textAlign:h==="Amount"?"right":"left",padding:"0 12px 14px",fontSize:10,letterSpacing:2,color:C.textMuted,textTransform:"uppercase",fontFamily:"'JetBrains Mono',monospace"}},h);})
-            )),
-            e("tbody",null,fil.slice().sort(function(a,b){return b.date.localeCompare(a.date);}).map(function(t){
-              var col=t.type==="income"?C.teal:t.type==="investment"?C.gold:t.type==="transfer"?C.textDim:C.red;
-              return e("tr",{key:t.id,style:{borderBottom:"1px solid rgba(255,255,255,0.035)"},onMouseEnter:function(ev){ev.currentTarget.style.background=C.bgHover;},onMouseLeave:function(ev){ev.currentTarget.style.background="transparent";}},
-                e("td",{style:{padding:"12px",color:C.textDim,fontSize:12,fontFamily:"'JetBrains Mono',monospace"}},fmtD(t.date)),
-                e("td",{style:{padding:"12px",color:C.text,fontSize:13,maxWidth:220,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}},t.description),
-                e("td",{style:{padding:"12px"}},e("span",{style:{background:"rgba(255,255,255,0.05)",color:C.textDim,padding:"3px 10px",borderRadius:20,fontSize:11}},t.category)),
-                e("td",{style:{padding:"12px"}},e("span",{style:{color:AC[t.account],fontSize:12}},(AI[t.account]||"")+" "+t.account)),
-                e("td",{style:{padding:"12px",color:col,fontSize:11,textTransform:"capitalize"}},t.type),
-                e("td",{style:{padding:"12px",fontFamily:"'JetBrains Mono',monospace",fontWeight:600,fontSize:14,color:col,textAlign:"right"}},(t.type==="income"?"+":t.type==="investment"?"→ ":t.type==="transfer"?"⇄ ":"-")+fmt(t.amount))
-              );
-            }))
+      tab==="transactions"&&e("div",null,
+        e(Card,{style:{marginBottom:16}},
+          e("div",{style:{display:"grid",gridTemplateColumns:"1fr auto auto auto auto",gap:10,alignItems:"center"}},
+            e("div",{style:{position:"relative"}},
+              e("span",{style:{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",color:C.textMuted,fontSize:14}},"🔍"),
+              e("input",{placeholder:"Search description or category...",value:txSearch,onChange:function(ev){setTxSearch(ev.target.value);},style:Object.assign({},inp,{paddingLeft:34,fontSize:13})})
+            ),
+            e("select",{value:txTypeFilter,onChange:function(ev){setTxTypeFilter(ev.target.value);},style:Object.assign({},inp,{width:"auto",fontSize:12})},
+              ["All","income","expense","transfer","investment"].map(function(v){return e("option",{key:v,value:v},v==="All"?"All Types":v.charAt(0).toUpperCase()+v.slice(1));})
+            ),
+            e("select",{value:txCatFilter,onChange:function(ev){setTxCatFilter(ev.target.value);},style:Object.assign({},inp,{width:"auto",fontSize:12,maxWidth:160})},
+              txCategories.map(function(v){return e("option",{key:v,value:v},v==="All"?"All Categories":v);})
+            ),
+            e("input",{type:"date",value:txDateFrom,onChange:function(ev){setTxDateFrom(ev.target.value);},style:Object.assign({},inp,{width:"auto",fontSize:12}),title:"From date"}),
+            e("input",{type:"date",value:txDateTo,onChange:function(ev){setTxDateTo(ev.target.value);},style:Object.assign({},inp,{width:"auto",fontSize:12}),title:"To date"})
           )
+        ),
+        e(Card,null,
+          e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}},
+            e("div",{style:{fontFamily:"'JetBrains Mono',monospace",fontSize:11,color:C.textMuted}},txFil.length+" of "+fil.length+" transactions"),
+            e("div",{style:{display:"flex",gap:20}},
+              e("div",{style:{textAlign:"right"}},
+                e("div",{style:{fontSize:10,color:C.textMuted,textTransform:"uppercase",letterSpacing:1,fontFamily:"'JetBrains Mono',monospace"}},"Income"),
+                e("div",{style:{fontSize:13,color:C.teal,fontFamily:"'JetBrains Mono',monospace",fontWeight:600}},"+"+fmt(txFil.filter(function(t){return t.type==="income";}).reduce(function(s,t){return s+t.amount;},0)))
+              ),
+              e("div",{style:{textAlign:"right"}},
+                e("div",{style:{fontSize:10,color:C.textMuted,textTransform:"uppercase",letterSpacing:1,fontFamily:"'JetBrains Mono',monospace"}},"Expenses"),
+                e("div",{style:{fontSize:13,color:C.red,fontFamily:"'JetBrains Mono',monospace",fontWeight:600}},"-"+fmt(txFil.filter(function(t){return t.type==="expense";}).reduce(function(s,t){return s+t.amount;},0)))
+              ),
+              (txSearch||txTypeFilter!=="All"||txCatFilter!=="All"||txDateFrom||txDateTo)?e("button",{onClick:function(){setTxSearch("");setTxTypeFilter("All");setTxCatFilter("All");setTxDateFrom("");setTxDateTo("");},style:{fontSize:11,background:"transparent",border:"1px solid "+C.border,borderRadius:6,color:C.textMuted,padding:"4px 10px",fontFamily:"'JetBrains Mono',monospace"}},"✕ clear filters"):null
+            )
+          ),
+          e("div",{style:{overflowX:"auto"}},
+            e("table",{style:{width:"100%",borderCollapse:"collapse"}},
+              e("thead",null,e("tr",{style:{borderBottom:"1px solid "+C.border}},
+                ["Date","Description","Category","Account","Type","Amount"].map(function(h){return e("th",{key:h,style:{textAlign:h==="Amount"?"right":"left",padding:"0 12px 14px",fontSize:10,letterSpacing:2,color:C.textMuted,textTransform:"uppercase",fontFamily:"'JetBrains Mono',monospace"}},h);})
+              )),
+              e("tbody",null,txFil.slice(0,200).map(function(t){
+                var col=t.type==="income"?C.teal:t.type==="investment"?C.gold:t.type==="transfer"?C.textDim:C.red;
+                return e("tr",{key:t.id,style:{borderBottom:"1px solid rgba(255,255,255,0.028)"},onMouseEnter:function(ev){ev.currentTarget.style.background=C.bgHover;},onMouseLeave:function(ev){ev.currentTarget.style.background="transparent";}},
+                  e("td",{style:{padding:"10px 12px",color:C.textDim,fontSize:12,fontFamily:"'JetBrains Mono',monospace",whiteSpace:"nowrap"}},fmtD(t.date)),
+                  e("td",{style:{padding:"10px 12px",color:C.text,fontSize:13,maxWidth:240,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}},t.description),
+                  e("td",{style:{padding:"10px 12px"}},e("span",{style:{background:"rgba(255,255,255,0.05)",color:C.textDim,padding:"3px 10px",borderRadius:20,fontSize:11,whiteSpace:"nowrap"}},t.category)),
+                  e("td",{style:{padding:"10px 12px"}},e("span",{style:{color:AC[t.account],fontSize:12,whiteSpace:"nowrap"}},(AI[t.account]||"")+" "+t.account)),
+                  e("td",{style:{padding:"10px 12px",color:col,fontSize:11,textTransform:"capitalize",whiteSpace:"nowrap"}},t.type),
+                  e("td",{style:{padding:"10px 12px",fontFamily:"'JetBrains Mono',monospace",fontWeight:600,fontSize:13,color:col,textAlign:"right",whiteSpace:"nowrap"}},(t.type==="income"?"+":t.type==="investment"?"→ ":t.type==="transfer"?"⇄ ":"-")+fmt(t.amount))
+                );
+              }))
+            )
+          ),
+          txFil.length>200&&e("div",{style:{textAlign:"center",padding:"12px",fontSize:12,color:C.textMuted}},txFil.length-200+" more — refine filters to narrow results")
         )
       ),
 
@@ -975,10 +1036,52 @@ function App(){
       ),
 
       // IMPORT
-      tab==="import"&&e(Card,null,
-        e(SecTitle,null,"Import Account Data"),
-        e("p",{style:{color:C.textDim,fontSize:14,marginBottom:24,lineHeight:1.7}},"Drop your CSV files below. Data saves to this browser automatically — import once per device."),
-        e(ImportZone,{onImport:doImport})
+      tab==="import"&&e("div",null,
+        e("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}},
+          e(Card,null,
+            e(SecTitle,null,"Import Account Data"),
+            e("p",{style:{color:C.textDim,fontSize:13,marginBottom:20,lineHeight:1.8}},"Drop CSV files below. Each import merges with existing data — re-upload any file to refresh prices or re-parse with updated rules."),
+            e(ImportZone,{onImport:doImport})
+          ),
+          e(Card,null,
+            e(SecTitle,null,"Imported Files"),
+            e("div",{style:{marginBottom:16}},
+              Object.keys(localStorage).filter(function(k){return k.startsWith("fv_raw_");}).length===0
+              ?e("div",{style:{color:C.textMuted,fontSize:13,padding:"20px 0"}},"No files imported yet.")
+              :Object.keys(localStorage).filter(function(k){return k.startsWith("fv_raw_");}).map(function(k){
+                var acct=k.replace("fv_raw_","");
+                var raw=localStorage.getItem(k)||"";
+                var lines=raw.split("\n").filter(Boolean).length;
+                return e("div",{key:k,style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:"1px solid "+C.border}},
+                  e("div",null,
+                    e("div",{style:{fontSize:13,color:C.text,fontWeight:500}},acct),
+                    e("div",{style:{fontSize:11,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace",marginTop:2}},lines+" lines stored")
+                  ),
+                  e("button",{onClick:function(){
+                    var txt=localStorage.getItem(k);
+                    if(txt)doImport(txt,acct);
+                  },style:{fontSize:11,background:"transparent",border:"1px solid "+C.teal,borderRadius:6,color:C.teal,padding:"4px 10px",fontFamily:"'JetBrains Mono',monospace"}},"↻ re-import")
+                );
+              })
+            ),
+            e("div",{style:{paddingTop:16,borderTop:"1px solid "+C.border}},
+              e("div",{style:{fontSize:12,color:C.textMuted,marginBottom:12}},"Bulk actions"),
+              e("div",{style:{display:"flex",gap:10}},
+                e("button",{onClick:reparse,style:{fontSize:12,background:"transparent",border:"1px solid "+C.teal,borderRadius:6,color:C.teal,padding:"6px 14px",fontFamily:"'JetBrains Mono',monospace"}},"↻ Re-parse all"),
+                e("button",{onClick:clearAll,style:{fontSize:12,background:"transparent",border:"1px solid "+C.red,borderRadius:6,color:C.red,padding:"6px 14px",fontFamily:"'JetBrains Mono',monospace"}},"🗑 Reset everything")
+              )
+            )
+          )
+        ),
+        e(Card,null,
+          e(SecTitle,null,"Data Summary"),
+          e("div",{style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:16}},
+            e(KPI,{label:"Total Records",value:tx.length,color:C.teal,icon:"📋"}),
+            e(KPI,{label:"Accounts",value:[...new Set(tx.map(function(t){return t.account;}))].length,color:C.gold,icon:"🏦"}),
+            e(KPI,{label:"Date Range",value:tx.length>0?tx.reduce(function(mn,t){return t.date<mn?t.date:mn;},tx[0].date).slice(0,7):"—",color:C.purple,icon:"📅"}),
+            e(KPI,{label:"Holdings",value:holdings.length,color:C.orange,icon:"📊"})
+          )
+        )
       )
     )
   );

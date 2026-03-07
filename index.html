@@ -558,75 +558,7 @@ function App(){
   var NO_PRICE={"INNOVATION FUND":true};
 
   var fetchPrices=useCallback(async function(syms){
-    if(!syms.length)return;setPLoad(true);
-    var fetchable=syms.filter(function(s){return !NO_PRICE[s];});
-
-    // Parse price data from whatever JSON structure comes back
-    function extractPrice(data,sym){
-      // v7 quoteResponse
-      var q=data&&data.quoteResponse&&data.quoteResponse.result;
-      if(q&&q.length){
-        var r=q[0];
-        if(r&&r.regularMarketPrice!=null){
-          var pr=r.regularMarketPrice,pv=r.regularMarketPreviousClose||pr;
-          return {price:pr,change:((pr-pv)/pv)*100};
-        }
-      }
-      // v8 chart meta
-      var m=data&&data.chart&&data.chart.result&&data.chart.result[0]&&data.chart.result[0].meta;
-      if(m&&m.regularMarketPrice!=null){
-        var pr=m.regularMarketPrice,pv=m.chartPreviousClose||pr;
-        return {price:pr,change:((pr-pv)/pv)*100};
-      }
-      return null;
-    }
-
-    async function fetchOne(sym){
-      // Build proxy + endpoint combinations to try
-      var yfsym=sym;
-      var targets=[
-        "https://query1.finance.yahoo.com/v8/finance/chart/"+yfsym+"?interval=1d&range=5d",
-        "https://query2.finance.yahoo.com/v8/finance/chart/"+yfsym+"?interval=1d&range=5d",
-        "https://query1.finance.yahoo.com/v7/finance/quote?symbols="+yfsym,
-      ];
-      var proxies=[
-        function(u){return "https://corsproxy.io/?url="+encodeURIComponent(u);},
-        function(u){return "https://api.allorigins.win/get?url="+encodeURIComponent(u);},
-        function(u){return "https://api.codetabs.com/v1/proxy?quest="+encodeURIComponent(u);},
-        function(u){return "https://thingproxy.freeboard.io/fetch/"+u;},
-      ];
-      for(var ti=0;ti<targets.length;ti++){
-        for(var pi=0;pi<proxies.length;pi++){
-          try{
-            var url=proxies[pi](targets[ti]);
-            var res=await fetch(url);
-            if(!res.ok)continue;
-            var text=await res.text();
-            if(!text||text.length<20)continue;
-            // allorigins wraps in {contents:..., status:{...}}
-            var raw=text;
-            if(text.indexOf('"contents"')>-1){
-              var wrapper=JSON.parse(text);
-              raw=wrapper.contents||text;
-            }
-            var data=JSON.parse(raw);
-            var result=extractPrice(data,sym);
-            if(result){
-              setPrices(function(prev){var n=Object.assign({},prev);n[sym]=result;return n;});
-              return true;
-            }
-          }catch(x){}
-        }
-      }
-      console.warn("No price found for",sym);
-      return false;
-    }
-
-    // Sequential with small delay to avoid hammering proxies
-    for(var i=0;i<fetchable.length;i++){
-      await fetchOne(fetchable[i]);
-      if(i<fetchable.length-1)await new Promise(function(r){setTimeout(r,200);});
-    }
+    // Prices come from portfolio CSV (csvPrice field) - no proxy needed
     setPLoad(false);
   },[]);
 
@@ -749,7 +681,7 @@ function App(){
       e("div",{style:{maxWidth:1400,margin:"0 auto",display:"flex",alignItems:"center",justifyContent:"space-between",height:64}},
         e("div",null,
           e("span",{style:{fontFamily:"'Playfair Display',serif",fontSize:20,color:C.gold}},"◈ FINVAULT"),
-          e("span",{style:{fontSize:10,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace",marginLeft:8}},"v2.6"),
+          e("span",{style:{fontSize:10,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace",marginLeft:8}},"v2.7"),
           e("span",{style:{marginLeft:12,fontSize:11,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace"}},"PERSONAL WEALTH OS")
         ),
         e("div",{style:{display:"flex",gap:2,background:"rgba(255,255,255,0.03)",borderRadius:10,padding:4,border:"1px solid rgba(255,255,255,0.06)"}},
@@ -1048,55 +980,54 @@ function App(){
       // IMPORT
       // BRIEFING
       tab==="briefing"&&e("div",null,
-        e("div",{style:{marginBottom:24}},
-          e("div",{style:{fontSize:22,fontWeight:700,color:C.gold,fontFamily:"'Playfair Display',serif",marginBottom:4}},"✦ Daily Briefing"),
-          e("div",{style:{fontSize:13,color:C.textMuted}},new Date().toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric",year:"numeric"}))
+        e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:24}},
+          e("div",null,
+            e("div",{style:{fontSize:22,fontWeight:700,color:C.gold,fontFamily:"'Playfair Display',serif",marginBottom:4}},"✦ Daily Briefing"),
+            e("div",{style:{fontSize:13,color:C.textMuted}},new Date().toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric",year:"numeric"}))
+          ),
+          e("div",{style:{padding:"8px 16px",background:"rgba(255,193,80,0.07)",border:"1px solid "+C.border,borderRadius:8,fontSize:12,color:C.textMuted}},"⏰ Best after 4pm ET for full-day data")
         ),
         e("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20}},
 
-          // ── Market Briefing card ──
+          // Market Briefing
           e(Card,null,
             e("div",{style:{fontSize:16,fontWeight:700,color:C.text,marginBottom:8}},"🌍 Market Briefing"),
-            e("div",{style:{fontSize:13,color:C.textMuted,lineHeight:1.8,marginBottom:24}},
-              "Get a live summary of today's market: index performance, top stories, sector moves, and overall sentiment — researched fresh by Claude."
-            ),
-            e("div",{style:{background:"rgba(255,193,80,0.06)",border:"1px solid "+C.border,borderRadius:10,padding:16,marginBottom:20}},
-              e("div",{style:{fontSize:11,color:C.textMuted,letterSpacing:1,textTransform:"uppercase",fontFamily:"'JetBrains Mono',monospace",marginBottom:8}},"What you'll get"),
-              ["S&P 500, NASDAQ & DOW performance","Top 3-5 market stories of the day","Sector highlights & rotation","Fed / macro news if relevant","Overall market sentiment"].map(function(item,i){
-                return e("div",{key:i,style:{display:"flex",gap:8,fontSize:12,color:C.textDim,marginBottom:5}},
-                  e("span",{style:{color:C.gold}},"▸"),item
-                );
+            e("div",{style:{fontSize:13,color:C.textMuted,lineHeight:1.8,marginBottom:20}},"Get today's index performance, top stories, sector moves, and market sentiment — researched live by Claude."),
+            e("div",{style:{background:"rgba(255,193,80,0.06)",border:"1px solid "+C.border,borderRadius:10,padding:16,marginBottom:24}},
+              e("div",{style:{fontSize:11,color:C.textMuted,letterSpacing:1,textTransform:"uppercase",fontFamily:"'JetBrains Mono',monospace",marginBottom:10}},"Covers"),
+              ["S&P 500, NASDAQ & DOW with exact % changes","Top 3-5 market stories of the day","Sector performance & rotation","Fed / macro news if relevant","Overall sentiment & what to watch tomorrow"].map(function(item,i){
+                return e("div",{key:i,style:{display:"flex",gap:8,fontSize:12,color:C.textDim,marginBottom:6}},
+                  e("span",{style:{color:C.gold}},"▸"),e("span",null,item));
               })
             ),
             e("a",{
               href:(function(){
-                var prompt="Please give me a daily market briefing for today "+new Date().toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric",year:"numeric"})+". Search the web and cover: 1) Major index performance (S&P 500, NASDAQ, DOW) with exact % changes, 2) Top 3-5 most important market stories today, 3) Sector performance highlights, 4) Any key economic data or Fed news, 5) Overall market sentiment and what to watch tomorrow. Be specific with numbers and concise.";
+                var today=new Date().toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric",year:"numeric"});
+                var prompt="Please give me a daily market briefing for today, "+today+". Search the web and cover: 1) Major index performance (S&P 500, NASDAQ, DOW) with exact % changes, 2) Top 3-5 most important market stories today, 3) Sector performance highlights, 4) Any key economic data or Fed news, 5) Overall market sentiment and what to watch tomorrow. Be specific with numbers and concise.";
                 return "https://claude.ai/new?q="+encodeURIComponent(prompt);
               })(),
               target:"_blank",
-              style:{display:"block",textAlign:"center",padding:"12px 24px",background:"linear-gradient(135deg,"+C.gold+","+C.goldDim+")",borderRadius:8,color:"#07080A",fontWeight:700,fontSize:13,letterSpacing:1,textDecoration:"none",marginBottom:10}
-            },"Open Market Briefing in Claude →"),
+              style:{display:"block",textAlign:"center",padding:"13px 24px",background:"linear-gradient(135deg,"+C.gold+","+C.goldDim+")",borderRadius:8,color:"#07080A",fontWeight:700,fontSize:13,letterSpacing:1,textDecoration:"none",marginBottom:8}
+            },"Open in Claude.ai →"),
             e("div",{style:{fontSize:11,color:C.textMuted,textAlign:"center"}},"Opens Claude.ai in a new tab with the prompt ready")
           ),
 
-          // ── Portfolio Briefing card ──
+          // Portfolio Briefing
           e(Card,null,
             e("div",{style:{fontSize:16,fontWeight:700,color:C.text,marginBottom:8}},"📊 Portfolio Briefing"),
-            e("div",{style:{fontSize:13,color:C.textMuted,lineHeight:1.8,marginBottom:24}},
-              "Analyze your "+holdings.length+" holdings against today's market. Get performance context, news on your stocks, and personalized buying suggestions."
-            ),
-            e("div",{style:{background:"rgba(62,207,178,0.06)",border:"1px solid rgba(62,207,178,0.15)",borderRadius:10,padding:16,marginBottom:20}},
-              e("div",{style:{fontSize:11,color:C.textMuted,letterSpacing:1,textTransform:"uppercase",fontFamily:"'JetBrains Mono',monospace",marginBottom:8}},"Your portfolio snapshot"),
-              holdings.slice(0,8).map(function(h,i){
+            e("div",{style:{fontSize:13,color:C.textMuted,lineHeight:1.8,marginBottom:20}},"Analyze your "+holdings.length+" holdings against today's market — performance, news, and buying suggestions."),
+            e("div",{style:{background:"rgba(62,207,178,0.06)",border:"1px solid rgba(62,207,178,0.15)",borderRadius:10,padding:16,marginBottom:24}},
+              e("div",{style:{fontSize:11,color:C.textMuted,letterSpacing:1,textTransform:"uppercase",fontFamily:"'JetBrains Mono',monospace",marginBottom:10}},"Your portfolio snapshot"),
+              holdings.length>0?holdings.slice(0,8).map(function(h,i){
                 var curVal=h.currentValue||h.value;
                 var gain=h.cost>0?((curVal-h.cost)/h.cost*100).toFixed(1):"0";
                 var col=parseFloat(gain)>=0?C.teal:C.red;
-                return e("div",{key:i,style:{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:4}},
-                  e("span",{style:{color:C.gold,fontFamily:"'JetBrains Mono',monospace"}},(h.portfolioSection||h.account).slice(0,3).toUpperCase()+" · "+h.symbol),
+                return e("div",{key:i,style:{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:5}},
+                  e("span",{style:{color:C.gold,fontFamily:"'JetBrains Mono',monospace"}},h.symbol),
                   e("span",{style:{color:col,fontFamily:"'JetBrains Mono',monospace"}},(parseFloat(gain)>=0?"+":"")+gain+"%")
                 );
-              }),
-              holdings.length>8?e("div",{style:{fontSize:11,color:C.textMuted,marginTop:4}},"+"+( holdings.length-8)+" more positions"):null
+              }):e("div",{style:{fontSize:12,color:C.textMuted}},"No holdings — import your portfolio CSV first"),
+              holdings.length>8?e("div",{style:{fontSize:11,color:C.textMuted,marginTop:6}},"+"+( holdings.length-8)+" more positions"):null
             ),
             holdings.length>0?e("a",{
               href:(function(){
@@ -1105,26 +1036,21 @@ function App(){
                   var curVal=h.currentValue||h.value;
                   var gain=h.cost>0?((curVal-h.cost)/h.cost*100).toFixed(1):"0";
                   var disp=prices[h.symbol]||(h.csvPrice?{price:h.csvPrice,change:h.csvPlPct}:null);
-                  return h.symbol+" (cost:$"+h.cost.toFixed(0)+", current:$"+curVal.toFixed(0)+", P/L:"+gain+"%"+(disp?", price:$"+disp.price.toFixed(2):"")+(h.portfolioSection?", section:"+h.portfolioSection:"")+")";
-                }).join("\n");
-                var prompt="Today is "+today+". My holdings: "+holdingsSummary+". Please search the web: 1) How did each holding perform today and why? 2) Significant news for any of my stocks? 3) Which positions look strong to add to? 4) Any to be cautious about? 5) Suggest 2-3 buying opportunities with reasoning.";
+                  return h.symbol+"(cost:$"+h.cost.toFixed(0)+",value:$"+curVal.toFixed(0)+",P/L:"+gain+"%"+(disp?",price:$"+disp.price.toFixed(2):"")+")";
+                }).join(", ");
+                var prompt="Today is "+today+". My portfolio: "+holdingsSummary+". Please search the web and give me a portfolio briefing: 1) How did each holding perform today and why? Highlight biggest movers. 2) Any significant news or catalysts for my stocks? 3) Which positions look strong to add to? 4) Any to be cautious about or trim? 5) Suggest 2-3 buying opportunities that complement my portfolio with price context and reasoning.";
                 return "https://claude.ai/new?q="+encodeURIComponent(prompt);
               })(),
               target:"_blank",
-              style:{display:"block",textAlign:"center",padding:"12px 24px",background:"linear-gradient(135deg,"+C.teal+",#2aa89a)",borderRadius:8,color:"#07080A",fontWeight:700,fontSize:13,letterSpacing:1,textDecoration:"none",marginBottom:10}
-            },"Open Portfolio Briefing in Claude →"):
-            e("div",{style:{textAlign:"center",padding:20,color:C.textMuted,fontSize:13}},"Import your portfolio CSV first to enable this"),
+              style:{display:"block",textAlign:"center",padding:"13px 24px",background:"linear-gradient(135deg,"+C.teal+",#2aa89a)",borderRadius:8,color:"#07080A",fontWeight:700,fontSize:13,letterSpacing:1,textDecoration:"none",marginBottom:8}
+            },"Open in Claude.ai →"):
+            e("div",{style:{textAlign:"center",padding:20,color:C.textMuted,fontSize:13}},"Import your portfolio CSV first"),
             e("div",{style:{fontSize:11,color:C.textMuted,textAlign:"center"}},"Opens Claude.ai with your full portfolio pre-loaded")
           )
         ),
-
-        // ── Tip ──
-        e("div",{style:{marginTop:20,padding:16,background:"rgba(255,255,255,0.02)",border:"1px solid "+C.border,borderRadius:10,display:"flex",gap:12,alignItems:"flex-start"}},
+        e("div",{style:{marginTop:16,padding:16,background:"rgba(255,255,255,0.02)",border:"1px solid "+C.border,borderRadius:10,display:"flex",gap:12,alignItems:"center"}},
           e("span",{style:{fontSize:20}},"💡"),
-          e("div",null,
-            e("div",{style:{fontSize:13,color:C.text,fontWeight:500,marginBottom:4}},"Best time to run the Portfolio Briefing"),
-            e("div",{style:{fontSize:12,color:C.textMuted,lineHeight:1.7}},"Run it after 4pm ET when US markets close — Claude can then report actual closing prices and full-day performance. The Market Briefing can be run anytime during the trading day for live updates.")
-          )
+          e("div",{style:{fontSize:12,color:C.textMuted,lineHeight:1.7}},"Both briefings open Claude.ai in a new tab with your data pre-loaded. Run the Market Briefing anytime during the day. Run the Portfolio Briefing after 4pm ET when US markets close for full-day performance data.")
         )
       ),
       tab==="import"&&e("div",null,

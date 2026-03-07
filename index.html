@@ -508,6 +508,12 @@ function App(){
   var [pLoad,setPLoad]=useState(false);
   var [showGF,setShowGF]=useState(false);
   var [txSearch,setTxSearch]=useState("");
+  var [briefMarket,setBriefMarket]=useState(null);
+  var [briefPortfolio,setBriefPortfolio]=useState(null);
+  var [briefMarketLoading,setBriefMarketLoading]=useState(false);
+  var [briefPortfolioLoading,setBriefPortfolioLoading]=useState(false);
+  var [briefMarketTime,setBriefMarketTime]=useState(null);
+  var [briefPortfolioTime,setBriefPortfolioTime]=useState(null);
   var [txTypeFilter,setTxTypeFilter]=useState("All");
   var [txCatFilter,setTxCatFilter]=useState("All");
   var [txDateFrom,setTxDateFrom]=useState("");
@@ -731,7 +737,7 @@ function App(){
   var unvestedValue = googPrice ? UNVESTED_SHARES * googPrice : null;
 
   // ── Tabs ──
-  var TABS=["overview","earnings","transactions","investments","goals","import"];
+  var TABS=["overview","earnings","transactions","investments","goals","briefing","import"];
   function ns(a){return{padding:"8px 18px",borderRadius:8,border:"none",cursor:"pointer",fontSize:12,fontWeight:500,background:a?C.goldGlow:"transparent",color:a?C.gold:C.textDim,borderBottom:a?"2px solid "+C.gold:"2px solid transparent",transition:"all 0.2s"};}
   var inp={width:"100%",background:"rgba(255,255,255,0.05)",border:"1px solid "+C.border,borderRadius:8,padding:"10px 12px",color:C.text,fontSize:14,outline:"none",boxSizing:"border-box"};
 
@@ -743,11 +749,11 @@ function App(){
       e("div",{style:{maxWidth:1400,margin:"0 auto",display:"flex",alignItems:"center",justifyContent:"space-between",height:64}},
         e("div",null,
           e("span",{style:{fontFamily:"'Playfair Display',serif",fontSize:20,color:C.gold}},"◈ FINVAULT"),
-          e("span",{style:{fontSize:10,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace",marginLeft:8}},"v2.5"),
+          e("span",{style:{fontSize:10,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace",marginLeft:8}},"v2.6"),
           e("span",{style:{marginLeft:12,fontSize:11,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace"}},"PERSONAL WEALTH OS")
         ),
         e("div",{style:{display:"flex",gap:2,background:"rgba(255,255,255,0.03)",borderRadius:10,padding:4,border:"1px solid rgba(255,255,255,0.06)"}},
-          TABS.map(function(t){return e("button",{key:t,style:ns(tab===t),onClick:function(){setTab(t);}},t==="import"?"⬆ Import":t.charAt(0).toUpperCase()+t.slice(1));})
+          TABS.map(function(t){return e("button",{key:t,style:ns(tab===t),onClick:function(){setTab(t);}},t==="import"?"⬆ Import":t==="briefing"?"✦ Briefing":t.charAt(0).toUpperCase()+t.slice(1));})
         ),
         e("div",{style:{display:"flex",alignItems:"center",gap:12}},
           e("span",{style:{fontSize:12,color:C.textDim,fontFamily:"'JetBrains Mono',monospace"}},tx.length+" records ",e("span",{style:{color:C.teal}},"● saved")),
@@ -1040,6 +1046,180 @@ function App(){
       ),
 
       // IMPORT
+      // BRIEFING
+      tab==="briefing"&&e("div",null,
+        (function(){
+          // ── Claude API helpers ──
+          async function callClaude(systemPrompt, userPrompt, onChunk){
+            var response=await fetch("https://api.anthropic.com/v1/messages",{
+              method:"POST",
+              headers:{"Content-Type":"application/json"},
+              body:JSON.stringify({
+                model:"claude-sonnet-4-20250514",
+                max_tokens:1000,
+                stream:true,
+                tools:[{type:"web_search_20250305",name:"web_search"}],
+                system:systemPrompt,
+                messages:[{role:"user",content:userPrompt}]
+              })
+            });
+            if(!response.ok)throw new Error("API error "+response.status);
+            var reader=response.body.getReader();
+            var decoder=new TextDecoder();
+            var text="";
+            while(true){
+              var chunk=await reader.read();
+              if(chunk.done)break;
+              var lines=decoder.decode(chunk.value).split("\n");
+              for(var i=0;i<lines.length;i++){
+                var line=lines[i];
+                if(!line.startsWith("data: "))continue;
+                var data=line.slice(6);
+                if(data==="[DONE]")continue;
+                try{
+                  var ev=JSON.parse(data);
+                  if(ev.type==="content_block_delta"&&ev.delta&&ev.delta.type==="text_delta"){
+                    text+=ev.delta.text;
+                    onChunk(text);
+                  }
+                }catch(x){}
+              }
+            }
+            return text;
+          }
+
+          function fetchMarketBrief(){
+            setBriefMarketLoading(true);setBriefMarket(null);
+            var today=new Date().toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric",year:"numeric"});
+            callClaude(
+              "You are a concise financial market analyst. Use web search to get today's most relevant market news. Format your response in clear sections using markdown. Be specific with numbers and percentages. Today is "+today+".",
+              "Search for today's top market news and give me a daily market briefing covering: 1) Major index performance (S&P 500, NASDAQ, DOW), 2) Top 3-5 most important market stories today, 3) Sector performance highlights, 4) Key economic data or Fed news if any, 5) Overall market sentiment. Keep it concise and actionable.",
+              function(text){setBriefMarket(text);}
+            ).then(function(){setBriefMarketLoading(false);setBriefMarketTime(new Date().toLocaleTimeString());})
+             .catch(function(err){setBriefMarket("Error: "+err.message);setBriefMarketLoading(false);});
+          }
+
+          function fetchPortfolioBrief(){
+            setBriefPortfolioLoading(true);setBriefPortfolio(null);
+            var today=new Date().toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric",year:"numeric"});
+            var holdingsSummary=holdings.map(function(h){
+              var disp=prices[h.symbol]||(h.csvPrice?{price:h.csvPrice,change:h.csvPlPct,fromCsv:true}:null);
+              var curVal=h.currentValue||h.value;
+              var gain=curVal-h.cost;
+              var gainPct=h.cost>0?((gain/h.cost)*100).toFixed(1):"0";
+              return h.symbol+"(cost:$"+h.cost.toFixed(0)+", value:$"+curVal.toFixed(0)+", P/L:"+gainPct+"%, price:"+(disp?"$"+disp.price.toFixed(2)+(disp.fromCsv?" [CSV]":""):"N/A")+")";
+            }).join(", ");
+            callClaude(
+              "You are a personal investment advisor. Use web search to get current market data and news. Today is "+today+". Be specific, data-driven, and actionable. Format with markdown sections.",
+              "My portfolio holdings: "+holdingsSummary+"\n\nPlease: 1) Search for today's performance and news for each of my holdings, 2) Highlight my best and worst performers today with reasons why, 3) Identify any holdings with significant news or catalysts, 4) Based on current market conditions and sentiment, suggest 2-3 specific buying opportunities — either adding to existing positions or new positions that complement my portfolio, 5) Any positions I should be cautious about or consider trimming. Be specific with price targets and reasoning.",
+              function(text){setBriefPortfolio(text);}
+            ).then(function(){setBriefPortfolioLoading(false);setBriefPortfolioTime(new Date().toLocaleTimeString());})
+             .catch(function(err){setBriefPortfolio("Error: "+err.message);setBriefPortfolioLoading(false);});
+          }
+
+          // Simple markdown renderer
+          function renderMd(text){
+            if(!text)return null;
+            var lines=text.split("\n");
+            var els=[];
+            var i=0;
+            while(i<lines.length){
+              var line=lines[i];
+              if(line.startsWith("### ")){
+                els.push(e("div",{key:i,style:{fontSize:13,fontWeight:700,color:C.gold,marginTop:16,marginBottom:6,fontFamily:"'JetBrains Mono',monospace",letterSpacing:1}},line.slice(4)));
+              } else if(line.startsWith("## ")){
+                els.push(e("div",{key:i,style:{fontSize:15,fontWeight:700,color:C.gold,marginTop:20,marginBottom:8,borderBottom:"1px solid "+C.border,paddingBottom:6}},line.slice(3)));
+              } else if(line.startsWith("**")&&line.endsWith("**")){
+                els.push(e("div",{key:i,style:{fontSize:13,fontWeight:700,color:C.text,marginTop:10,marginBottom:4}},line.slice(2,-2)));
+              } else if(line.startsWith("- ")||line.startsWith("• ")){
+                var parts=line.slice(2).split(/\*\*(.*?)\*\*/g);
+                els.push(e("div",{key:i,style:{display:"flex",gap:8,marginBottom:5,fontSize:13,color:C.textDim,lineHeight:1.6}},
+                  e("span",{style:{color:C.gold,flexShrink:0}},"▸"),
+                  e("span",null,parts.map(function(p,pi){return pi%2===1?e("strong",{key:pi,style:{color:C.text}},p):p;}))
+                ));
+              } else if(line.match(/^\d+\./)){
+                els.push(e("div",{key:i,style:{display:"flex",gap:8,marginBottom:6,fontSize:13,color:C.textDim,lineHeight:1.6}},
+                  e("span",{style:{color:C.teal,flexShrink:0,fontFamily:"'JetBrains Mono',monospace",fontSize:11}},line.match(/^\d+/)[0]+"."),
+                  e("span",null,line.replace(/^\d+\.\s*/,"").split(/\*\*(.*?)\*\*/g).map(function(p,pi){return pi%2===1?e("strong",{key:pi,style:{color:C.text}},p):p;}))
+                ));
+              } else if(line.trim()===""){
+                els.push(e("div",{key:i,style:{height:6}}));
+              } else {
+                var parts2=line.split(/\*\*(.*?)\*\*/g);
+                els.push(e("div",{key:i,style:{fontSize:13,color:C.textDim,lineHeight:1.7,marginBottom:3}},
+                  parts2.map(function(p,pi){return pi%2===1?e("strong",{key:pi,style:{color:C.text}},p):p;})
+                ));
+              }
+              i++;
+            }
+            return els;
+          }
+
+          return e("div",null,
+            // Header
+            e("div",{style:{marginBottom:24}},
+              e("div",{style:{fontSize:22,fontWeight:700,color:C.gold,fontFamily:"'Playfair Display',serif",marginBottom:4}},"✦ Daily Briefing"),
+              e("div",{style:{fontSize:13,color:C.textMuted}},new Date().toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric",year:"numeric"}))
+            ),
+            e("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20}},
+
+              // ── Market Briefing ──
+              e(Card,null,
+                e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}},
+                  e("div",null,
+                    e("div",{style:{fontSize:16,fontWeight:700,color:C.text,marginBottom:2}},"🌍 Market Briefing"),
+                    briefMarketTime?e("div",{style:{fontSize:11,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace"}},"Updated "+briefMarketTime):null
+                  ),
+                  e("button",{
+                    onClick:fetchMarketBrief,
+                    disabled:briefMarketLoading,
+                    style:{padding:"8px 18px",background:briefMarketLoading?"transparent":"linear-gradient(135deg,"+C.gold+","+C.goldDim+")",border:"1px solid "+C.gold,borderRadius:8,color:briefMarketLoading?C.gold:"#07080A",fontWeight:700,fontSize:12,letterSpacing:1,opacity:briefMarketLoading?0.7:1}
+                  },briefMarketLoading?"⟳ Searching...":"↻ Refresh")
+                ),
+                briefMarketLoading&&!briefMarket?e("div",{style:{padding:"40px 0",textAlign:"center"}},
+                  e("div",{style:{fontSize:13,color:C.textMuted,marginBottom:8}},"Searching the web for today's market news..."),
+                  e("div",{style:{fontSize:11,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace",animation:"pulse 1.5s infinite"}},"Claude is researching...")
+                ):null,
+                briefMarket?e("div",{style:{lineHeight:1.7}},renderMd(briefMarket)):
+                !briefMarketLoading?e("div",{style:{padding:"40px 0",textAlign:"center",color:C.textMuted}},
+                  e("div",{style:{fontSize:32,marginBottom:12}},"🌍"),
+                  e("div",{style:{fontSize:14,marginBottom:6,color:C.textDim}},"Get today's market briefing"),
+                  e("div",{style:{fontSize:12,color:C.textMuted,marginBottom:20}},"Claude will search the web for the latest market news, index performance, and key stories"),
+                  e("button",{onClick:fetchMarketBrief,style:{padding:"10px 24px",background:"linear-gradient(135deg,"+C.gold+","+C.goldDim+")",border:"none",borderRadius:8,color:"#07080A",fontWeight:700,fontSize:13,letterSpacing:1}},"Generate Market Briefing")
+                ):null
+              ),
+
+              // ── Portfolio Briefing ──
+              e(Card,null,
+                e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}},
+                  e("div",null,
+                    e("div",{style:{fontSize:16,fontWeight:700,color:C.text,marginBottom:2}},"📊 Portfolio Briefing"),
+                    briefPortfolioTime?e("div",{style:{fontSize:11,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace"}},"Updated "+briefPortfolioTime):null
+                  ),
+                  e("button",{
+                    onClick:fetchPortfolioBrief,
+                    disabled:briefPortfolioLoading||holdings.length===0,
+                    style:{padding:"8px 18px",background:briefPortfolioLoading?"transparent":"linear-gradient(135deg,"+C.teal+",#2aa89a)",border:"1px solid "+C.teal,borderRadius:8,color:briefPortfolioLoading?C.teal:"#07080A",fontWeight:700,fontSize:12,letterSpacing:1,opacity:(briefPortfolioLoading||holdings.length===0)?0.7:1}
+                  },briefPortfolioLoading?"⟳ Analyzing...":"↻ Refresh")
+                ),
+                briefPortfolioLoading&&!briefPortfolio?e("div",{style:{padding:"40px 0",textAlign:"center"}},
+                  e("div",{style:{fontSize:13,color:C.textMuted,marginBottom:8}},"Analyzing your "+holdings.length+" holdings..."),
+                  e("div",{style:{fontSize:11,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace"}},"Claude is researching your positions...")
+                ):null,
+                briefPortfolio?e("div",{style:{lineHeight:1.7}},renderMd(briefPortfolio)):
+                !briefPortfolioLoading?e("div",{style:{padding:"40px 0",textAlign:"center",color:C.textMuted}},
+                  e("div",{style:{fontSize:32,marginBottom:12}},"📊"),
+                  e("div",{style:{fontSize:14,marginBottom:6,color:C.textDim}},holdings.length>0?"Analyze your "+holdings.length+" holdings":"No holdings found"),
+                  e("div",{style:{fontSize:12,color:C.textMuted,marginBottom:20}},"Claude will research each of your positions, flag today's movers, and suggest buying opportunities"),
+                  holdings.length>0?e("button",{onClick:fetchPortfolioBrief,style:{padding:"10px 24px",background:"linear-gradient(135deg,"+C.teal+",#2aa89a)",border:"none",borderRadius:8,color:"#07080A",fontWeight:700,fontSize:13,letterSpacing:1}},"Generate Portfolio Briefing"):
+                  e("div",{style:{fontSize:12,color:C.textMuted}},"Import your portfolio CSV first")
+                ):null
+              )
+            )
+          );
+        })()
+      ),
+
       tab==="import"&&e("div",null,
         e("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}},
           e(Card,null,

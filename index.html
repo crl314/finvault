@@ -299,7 +299,7 @@ function parsePortfolio(text){
       else if(fl.indexOf("sofi")!==-1)currentAccount="SoFi";
       else currentAccount="Robinhood";
       // Detect section label
-      currentSection=first.replace(/\(.*\)/g,"").trim();
+      currentSection=first.trim();
       continue;
     }
 
@@ -311,7 +311,12 @@ function parsePortfolio(text){
 
     if(!inDataSection||!hdrs.length)continue;
     if(first==="TOTAL"||first==="total"||!first)continue;
-    if(first==="#REF!"||first==="Innovation Fund")continue;
+    if(first==="#REF!")continue;
+    if(first==="Innovation Fund"){
+      // Include it but mark with no live price
+      res.push({id:"PF-"+first+"-"+i,date:today,description:first+" — "+first,amount:cleanUSD(cols[6]||"0"),type:"investment",category:"Buy",account:currentAccount,symbol:first,qty:0,currentValue:cleanUSD(cols[7]||"0"),csvPrice:cleanUSD(cols[4]||"0"),csvPlPct:0,portfolioSection:currentSection});
+      continue;
+    }
 
     var obj={};
     hdrs.forEach(function(h,idx){obj[h]=(cols[idx]||"").trim();});
@@ -681,7 +686,7 @@ function App(){
       e("div",{style:{maxWidth:1400,margin:"0 auto",display:"flex",alignItems:"center",justifyContent:"space-between",height:64}},
         e("div",null,
           e("span",{style:{fontFamily:"'Playfair Display',serif",fontSize:20,color:C.gold}},"◈ FINVAULT"),
-          e("span",{style:{fontSize:10,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace",marginLeft:8}},"v2.7"),
+          e("span",{style:{fontSize:10,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace",marginLeft:8}},"v2.9"),
           e("span",{style:{marginLeft:12,fontSize:11,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace"}},"PERSONAL WEALTH OS")
         ),
         e("div",{style:{display:"flex",gap:2,background:"rgba(255,255,255,0.03)",borderRadius:10,padding:4,border:"1px solid rgba(255,255,255,0.06)"}},
@@ -863,6 +868,48 @@ function App(){
         ),
         holdings.length>0?e("div",null,
           (function(){
+            // ── Top Movers ──
+            var withChange=holdings.map(function(h){
+              var disp=prices[h.symbol]||(h.csvPrice?{price:h.csvPrice,change:h.csvPlPct,fromCsv:true}:null);
+              return Object.assign({},h,{dispPrice:disp,dayChange:disp?disp.change:null});
+            }).filter(function(h){return h.dayChange!==null;});
+            var topGainers=withChange.slice().sort(function(a,b){return b.dayChange-a.dayChange;}).slice(0,3);
+            var topLosers=withChange.slice().sort(function(a,b){return a.dayChange-b.dayChange;}).slice(0,3);
+            function MoverRow(h){
+              var col=h.dayChange>=0?C.teal:C.red;
+              return e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"9px 0",borderBottom:"1px solid rgba(255,255,255,0.04)"}},
+                e("div",{style:{display:"flex",alignItems:"center",gap:10}},
+                  e("div",{style:{width:34,height:34,borderRadius:8,background:"rgba(255,255,255,0.05)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:700,color:C.gold,fontFamily:"'JetBrains Mono',monospace"}},h.symbol.slice(0,4)),
+                  e("div",null,
+                    e("div",{style:{fontSize:13,fontWeight:600,color:C.text}},h.symbol),
+                    e("div",{style:{fontSize:11,color:C.textMuted,maxWidth:110,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}},h.name)
+                  )
+                ),
+                e("div",{style:{textAlign:"right"}},
+                  e("div",{style:{fontSize:14,fontWeight:700,color:col,fontFamily:"'JetBrains Mono',monospace"}},(h.dayChange>=0?"+":"")+h.dayChange.toFixed(2)+"%"),
+                  e("div",{style:{fontSize:11,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace"}},"$"+h.dispPrice.price.toFixed(2)+(h.dispPrice.fromCsv?" · CSV":""))
+                )
+              );
+            }
+            var moversEl=e("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:20}},
+              e(Card,null,
+                e("div",{style:{display:"flex",alignItems:"center",gap:8,marginBottom:14}},
+                  e("span",{style:{fontSize:16}},"🚀"),
+                  e("span",{style:{fontSize:14,fontWeight:700,color:C.teal,fontFamily:"'JetBrains Mono',monospace",letterSpacing:0.5}},"Top Gainers")
+                ),
+                topGainers.length>0?topGainers.map(function(h,i){return e("div",{key:i},MoverRow(h));})
+                :e("div",{style:{color:C.textMuted,fontSize:13,padding:"10px 0"}},"No price data — re-parse CSV")
+              ),
+              e(Card,null,
+                e("div",{style:{display:"flex",alignItems:"center",gap:8,marginBottom:14}},
+                  e("span",{style:{fontSize:16}},"📉"),
+                  e("span",{style:{fontSize:14,fontWeight:700,color:C.red,fontFamily:"'JetBrains Mono',monospace",letterSpacing:0.5}},"Top Losers")
+                ),
+                topLosers.length>0?topLosers.map(function(h,i){return e("div",{key:i},MoverRow(h));})
+                :e("div",{style:{color:C.textMuted,fontSize:13,padding:"10px 0"}},"No price data — re-parse CSV")
+              )
+            );
+
             var sections={};
             holdings.forEach(function(h){
               var sec=h.portfolioSection||h.account||"Other";
@@ -871,7 +918,7 @@ function App(){
             });
             var sectionOrder=["Stocks Robinhood Portfolio","QQQ / SPY Hedge (Robinhood)","Metals/Materials Portfolio (Robinhood)","Mutual Funds (Venture Capital)","International ETFs (Robinhood)","International Stocks (Fidelity)","Fidelity","Robinhood","SoFi","Other"];
             var ordered=sectionOrder.filter(function(s){return sections[s];}).concat(Object.keys(sections).filter(function(s){return sectionOrder.indexOf(s)===-1;}));
-            return ordered.map(function(sec){
+            var sectionEls=ordered.map(function(sec){
               var sh=sections[sec];
               var secCurVal=sh.reduce(function(s,h){return s+(h.currentValue||h.value);},0);
               var secCost=sh.reduce(function(s,h){return s+h.cost;},0);
@@ -926,6 +973,7 @@ function App(){
                 )
               );
             });
+            return [moversEl].concat(sectionEls);
           })(),
           e("div",{style:{textAlign:"center",marginTop:8}},
             e("button",{onClick:function(){fetchPrices(holdings.map(function(h){return h.symbol;}));},style:{fontSize:11,background:"transparent",border:"1px solid "+C.border,borderRadius:6,color:C.textDim,padding:"6px 16px",fontFamily:"'JetBrains Mono',monospace"}},pLoad?"⟳ loading...":"↻ refresh live prices")

@@ -321,6 +321,8 @@ function parsePortfolio(text){
     var cost=cleanUSD(obj["average value (usd)"]||obj["average value"]||"0");
     var currentVal=cleanUSD(obj["current value (usd)"]||obj["current value"]||"0");
     var qty=parseFloat(obj["qty"]||"0")||0;
+    var csvPrice=cleanUSD(obj["current stock price"]||"0");
+    var csvPlPct=parseFloat((obj["p/l (%)"]||"0").replace("%",""))||0;
 
     if(!sym||sym==="TOTAL"||cost===0)continue;
 
@@ -335,6 +337,8 @@ function parsePortfolio(text){
       symbol:sym,
       qty:qty,
       currentValue:currentVal,
+      csvPrice:csvPrice,
+      csvPlPct:csvPlPct,
       portfolioSection:currentSection
     });
   }
@@ -542,51 +546,75 @@ function App(){
   // Symbols that have no live price feed (private funds etc)
   var NO_PRICE={"INNOVATION FUND":true};
 
-  // Try to get a crumb first, then fetch prices using it
   var fetchPrices=useCallback(async function(syms){
     if(!syms.length)return;setPLoad(true);
     var fetchable=syms.filter(function(s){return !NO_PRICE[s];});
 
-    async function fetchOne(sym){
-      // Strategy 1: Yahoo Finance v7 quote summary (less crumb-sensitive)
-      var urls=[
-        "https://api.allorigins.win/get?url="+encodeURIComponent("https://query1.finance.yahoo.com/v7/finance/quote?symbols="+sym),
-        "https://api.allorigins.win/get?url="+encodeURIComponent("https://query2.finance.yahoo.com/v7/finance/quote?symbols="+sym),
-        "https://api.codetabs.com/v1/proxy?quest="+encodeURIComponent("https://query1.finance.yahoo.com/v7/finance/quote?symbols="+sym),
-        "https://corsproxy.io/?"+encodeURIComponent("https://query1.finance.yahoo.com/v7/finance/quote?symbols="+sym),
-      ];
-      for(var i=0;i<urls.length;i++){
-        try{
-          var res=await fetch(urls[i],{headers:{"Accept":"application/json"}});
-          if(!res.ok)continue;
-          var text=await res.text();
-          if(!text||text.length<10)continue;
-          var raw=text.indexOf('"contents"')>-1?JSON.parse(text).contents:text;
-          var data=JSON.parse(raw);
-          var q=data&&data.quoteResponse&&data.quoteResponse.result&&data.quoteResponse.result[0];
-          if(q&&q.regularMarketPrice!=null){
-            var pr=q.regularMarketPrice;
-            var pv=q.regularMarketPreviousClose||q.chartPreviousClose||pr;
-            setPrices(function(prev){var n=Object.assign({},prev);n[sym]={price:pr,change:((pr-pv)/pv)*100};return n;});
-            return true;
-          }
-          // Also try chart endpoint in same response pass
-          var meta=data&&data.chart&&data.chart.result&&data.chart.result[0]&&data.chart.result[0].meta;
-          if(meta&&meta.regularMarketPrice){
-            var pr2=meta.regularMarketPrice,pv2=meta.chartPreviousClose||pr2;
-            setPrices(function(prev){var n=Object.assign({},prev);n[sym]={price:pr2,change:((pr2-pv2)/pv2)*100};return n;});
-            return true;
-          }
-        }catch(x){console.warn("fetchOne failed url",i,"for",sym,x.message||x);}
+    // Parse price data from whatever JSON structure comes back
+    function extractPrice(data,sym){
+      // v7 quoteResponse
+      var q=data&&data.quoteResponse&&data.quoteResponse.result;
+      if(q&&q.length){
+        var r=q[0];
+        if(r&&r.regularMarketPrice!=null){
+          var pr=r.regularMarketPrice,pv=r.regularMarketPreviousClose||pr;
+          return {price:pr,change:((pr-pv)/pv)*100};
+        }
       }
-      console.warn("All endpoints failed for",sym);
+      // v8 chart meta
+      var m=data&&data.chart&&data.chart.result&&data.chart.result[0]&&data.chart.result[0].meta;
+      if(m&&m.regularMarketPrice!=null){
+        var pr=m.regularMarketPrice,pv=m.chartPreviousClose||pr;
+        return {price:pr,change:((pr-pv)/pv)*100};
+      }
+      return null;
+    }
+
+    async function fetchOne(sym){
+      // Build proxy + endpoint combinations to try
+      var yfsym=sym;
+      var targets=[
+        "https://query1.finance.yahoo.com/v8/finance/chart/"+yfsym+"?interval=1d&range=5d",
+        "https://query2.finance.yahoo.com/v8/finance/chart/"+yfsym+"?interval=1d&range=5d",
+        "https://query1.finance.yahoo.com/v7/finance/quote?symbols="+yfsym,
+      ];
+      var proxies=[
+        function(u){return "https://corsproxy.io/?url="+encodeURIComponent(u);},
+        function(u){return "https://api.allorigins.win/get?url="+encodeURIComponent(u);},
+        function(u){return "https://api.codetabs.com/v1/proxy?quest="+encodeURIComponent(u);},
+        function(u){return "https://thingproxy.freeboard.io/fetch/"+u;},
+      ];
+      for(var ti=0;ti<targets.length;ti++){
+        for(var pi=0;pi<proxies.length;pi++){
+          try{
+            var url=proxies[pi](targets[ti]);
+            var res=await fetch(url);
+            if(!res.ok)continue;
+            var text=await res.text();
+            if(!text||text.length<20)continue;
+            // allorigins wraps in {contents:..., status:{...}}
+            var raw=text;
+            if(text.indexOf('"contents"')>-1){
+              var wrapper=JSON.parse(text);
+              raw=wrapper.contents||text;
+            }
+            var data=JSON.parse(raw);
+            var result=extractPrice(data,sym);
+            if(result){
+              setPrices(function(prev){var n=Object.assign({},prev);n[sym]=result;return n;});
+              return true;
+            }
+          }catch(x){}
+        }
+      }
+      console.warn("No price found for",sym);
       return false;
     }
 
-    // Fetch one at a time with small delay to avoid rate limiting
+    // Sequential with small delay to avoid hammering proxies
     for(var i=0;i<fetchable.length;i++){
       await fetchOne(fetchable[i]);
-      if(i<fetchable.length-1)await new Promise(function(r){setTimeout(r,150);});
+      if(i<fetchable.length-1)await new Promise(function(r){setTimeout(r,200);});
     }
     setPLoad(false);
   },[]);
@@ -625,10 +653,12 @@ function App(){
     var idx=t.description.indexOf(" —");
     var sym=idx>0?t.description.slice(0,idx).toUpperCase():t.description.split(" ")[0].toUpperCase().slice(0,6);
     var k=sym+"|"+t.account;
-    if(!hMap[k])hMap[k]={symbol:sym,name:(t.description.split("—")[1]||"").trim()||t.description.slice(0,35),account:t.account,bought:0,sold:0,currentValue:t.currentValue||0,portfolioSection:t.portfolioSection||"",qty:t.qty||0};
+    if(!hMap[k])hMap[k]={symbol:sym,name:(t.description.split("—")[1]||"").trim()||t.description.slice(0,35),account:t.account,bought:0,sold:0,currentValue:t.currentValue||0,portfolioSection:t.portfolioSection||"",qty:t.qty||0,csvPrice:t.csvPrice||0,csvPlPct:t.csvPlPct||0};
     if(t.currentValue)hMap[k].currentValue=t.currentValue;
     if(t.portfolioSection)hMap[k].portfolioSection=t.portfolioSection;
     if(t.qty)hMap[k].qty=t.qty;
+    if(t.csvPrice)hMap[k].csvPrice=t.csvPrice;
+    if(t.csvPlPct)hMap[k].csvPlPct=t.csvPlPct;
     if(t.category==="Sell")hMap[k].sold+=t.amount;else hMap[k].bought+=t.amount;
   });
   var holdings=Object.values(hMap).map(function(h){return Object.assign({},h,{value:Math.max(0,h.bought-h.sold),cost:h.bought});}).filter(function(h){return h.value>0;}).sort(function(a,b){return b.value-a.value;});
@@ -687,7 +717,7 @@ function App(){
       e("div",{style:{maxWidth:1400,margin:"0 auto",display:"flex",alignItems:"center",justifyContent:"space-between",height:64}},
         e("div",null,
           e("span",{style:{fontFamily:"'Playfair Display',serif",fontSize:20,color:C.gold}},"◈ FINVAULT"),
-          e("span",{style:{fontSize:10,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace",marginLeft:8}},"v2.1"),
+          e("span",{style:{fontSize:10,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace",marginLeft:8}},"v2.3"),
           e("span",{style:{marginLeft:12,fontSize:11,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace"}},"PERSONAL WEALTH OS")
         ),
         e("div",{style:{display:"flex",gap:2,background:"rgba(255,255,255,0.03)",borderRadius:10,padding:4,border:"1px solid rgba(255,255,255,0.06)"}},
@@ -871,6 +901,7 @@ function App(){
                   )),
                   e("tbody",null,sh.map(function(h,i){
                     var lp=prices[h.symbol];
+                    var dispPrice=lp||( h.csvPrice?{price:h.csvPrice,change:h.csvPlPct,fromCsv:true}:null);
                     var curVal=h.currentValue||h.value;
                     var gain=curVal-h.cost;
                     var gainPct=h.cost>0?((gain/h.cost)*100).toFixed(1):"0.0";
@@ -881,8 +912,9 @@ function App(){
                       e("td",{style:{padding:"10px",fontFamily:"'JetBrains Mono',monospace",color:C.textDim,fontSize:12,textAlign:"right"}},h.qty>0?h.qty.toFixed(h.qty>=1?2:4):"—"),
                       e("td",{style:{padding:"10px",fontFamily:"'JetBrains Mono',monospace",color:C.textDim,fontSize:12,textAlign:"right"}},fmt(h.cost)),
                       e("td",{style:{padding:"10px",fontFamily:"'JetBrains Mono',monospace",color:C.teal,fontSize:12,textAlign:"right"}},fmt(curVal)),
-                      e("td",{style:{padding:"10px",fontFamily:"'JetBrains Mono',monospace",color:lp?C.text:C.textMuted,fontSize:12,textAlign:"right"}},lp?"$"+lp.price.toFixed(2):NO_PRICE[h.symbol]?"N/A":pLoad?"...":"—"),
-                      e("td",{style:{padding:"10px",fontFamily:"'JetBrains Mono',monospace",fontSize:12,color:lp?(lp.change>=0?C.teal:C.red):C.textMuted,textAlign:"right"}},lp?fmtP(lp.change):NO_PRICE[h.symbol]?"N/A":"—"),
+                      e("td",{style:{padding:"10px",fontFamily:"'JetBrains Mono',monospace",color:dispPrice?( dispPrice.fromCsv?C.textDim:C.text):C.textMuted,fontSize:12,textAlign:"right"}},
+                        dispPrice?e("span",null,"$"+dispPrice.price.toFixed(2),dispPrice.fromCsv?e("span",{style:{fontSize:9,color:C.textMuted,marginLeft:4}},"CSV"):null):NO_PRICE[h.symbol]?"N/A":pLoad?"...":"—"),
+                      e("td",{style:{padding:"10px",fontFamily:"'JetBrains Mono',monospace",fontSize:12,color:dispPrice?(dispPrice.change>=0?C.teal:C.red):C.textMuted,textAlign:"right"}},dispPrice?fmtP(dispPrice.change):NO_PRICE[h.symbol]?"N/A":"—"),
                       e("td",{style:{padding:"10px",fontFamily:"'JetBrains Mono',monospace",color:col,fontSize:12,textAlign:"right"}},(gain>=0?"+":"")+fmt(gain)),
                       e("td",{style:{padding:"10px",fontFamily:"'JetBrains Mono',monospace",color:col,fontSize:12,textAlign:"right"}},(parseFloat(gainPct)>=0?"+":"")+gainPct+"%"),
                       e("td",{style:{padding:"10px",fontFamily:"'JetBrains Mono',monospace",color:C.textMuted,fontSize:12,textAlign:"right"}},secCurVal>0?((curVal/secCurVal)*100).toFixed(1)+"%":"—")

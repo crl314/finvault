@@ -512,6 +512,7 @@ function App(){
   var [prices,setPrices]=useState({});
   var [pLoad,setPLoad]=useState(false);
   var [showGF,setShowGF]=useState(false);
+  var [editGoalId,setEditGoalId]=useState(null);
   var [txSearch,setTxSearch]=useState("");
   var [briefMarket,setBriefMarket]=useState(null);
   var [briefPortfolio,setBriefPortfolio]=useState(null);
@@ -692,7 +693,7 @@ function App(){
       e("div",{style:{maxWidth:1400,margin:"0 auto",display:"flex",alignItems:"center",justifyContent:"space-between",height:64}},
         e("div",null,
           e("span",{style:{fontFamily:"'Playfair Display',serif",fontSize:20,color:C.gold}},"◈ FINVAULT"),
-          e("span",{style:{fontSize:10,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace",marginLeft:8}},"v3.4"),
+          e("span",{style:{fontSize:10,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace",marginLeft:8}},"v3.5"),
           e("span",{style:{marginLeft:12,fontSize:11,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace"}},"PERSONAL WEALTH OS")
         ),
         e("div",{style:{display:"flex",gap:2,background:"rgba(255,255,255,0.03)",borderRadius:10,padding:4,border:"1px solid rgba(255,255,255,0.06)"}},
@@ -1049,21 +1050,50 @@ function App(){
         e("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20}},
           goals.map(function(g){
             var pct=Math.min((g.current/g.target)*100,100);
+            var isEditing=editGoalId===g.id;
             return e(Card,{key:g.id,style:{borderColor:g.color+"30",position:"relative",overflow:"hidden"}},
               e("div",{style:{position:"absolute",top:0,left:0,height:3,width:pct+"%",background:"linear-gradient(90deg,"+g.color+","+g.color+"88)"}}),
-              e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:20}},
-                e("div",null,e("div",{style:{fontSize:28,marginBottom:6}},g.icon),e("div",{style:{fontSize:17,fontWeight:600,color:C.text}},g.name),g.deadline&&e("div",{style:{fontSize:11,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace"}},"By "+g.deadline)),
-                e("div",{style:{display:"flex",gap:10,alignItems:"center"}},
-                  e("div",{style:{fontSize:24,fontFamily:"'Playfair Display',serif",color:g.color,fontWeight:700}},pct.toFixed(0)+"%"),
-                  e("button",{onClick:function(){saveGoals(goals.filter(function(x){return x.id!==g.id;}));},style:{background:"rgba(255,94,108,0.1)",border:"none",borderRadius:6,color:C.red,padding:"4px 8px",fontSize:12}},"✕")
+              isEditing?
+                e("div",null,
+                  e("div",{style:{fontSize:13,fontWeight:700,color:C.gold,marginBottom:14,letterSpacing:1}},"✎ EDIT GOAL"),
+                  [["Name","name","text",g.name],["Target ($)","target","number",g.target],["Saved ($)","current","number",g.current],["Deadline","deadline","text",g.deadline||""],["Icon","icon","text",g.icon]].map(function(f){
+                    return e("div",{key:f[1],style:{marginBottom:10}},
+                      e("div",{style:{fontSize:10,color:C.textMuted,letterSpacing:1,marginBottom:4,fontFamily:"'JetBrains Mono',monospace"}},f[0]),
+                      e("input",{type:f[2],defaultValue:f[3],id:"eg-"+g.id+"-"+f[1],style:{width:"100%",background:"rgba(255,255,255,0.06)",border:"1px solid "+C.border,borderRadius:6,color:C.text,fontSize:13,padding:"7px 10px",boxSizing:"border-box"}})
+                    );
+                  }),
+                  e("div",{style:{display:"flex",gap:10,marginTop:16}},
+                    e("button",{onClick:function(){
+                      var get=function(field){return document.getElementById("eg-"+g.id+"-"+field);};
+                      var updated=Object.assign({},g,{
+                        name:get("name").value||g.name,
+                        target:parseFloat(get("target").value)||g.target,
+                        current:parseFloat(get("current").value)||0,
+                        deadline:get("deadline").value||"",
+                        icon:get("icon").value||g.icon
+                      });
+                      saveGoals(goals.map(function(x){return x.id===g.id?updated:x;}));
+                      setEditGoalId(null);
+                    },style:{flex:1,padding:"9px",background:"linear-gradient(135deg,"+C.gold+","+C.goldDim+")",border:"none",borderRadius:7,color:"#07080A",fontWeight:700,fontSize:12}},"SAVE"),
+                    e("button",{onClick:function(){setEditGoalId(null);},style:{padding:"9px 16px",background:"rgba(255,255,255,0.06)",border:"1px solid "+C.border,borderRadius:7,color:C.textMuted,fontSize:12}},"Cancel")
+                  )
+                ):
+                e("div",null,
+                  e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:20}},
+                    e("div",null,e("div",{style:{fontSize:28,marginBottom:6}},g.icon),e("div",{style:{fontSize:17,fontWeight:600,color:C.text}},g.name),g.deadline&&e("div",{style:{fontSize:11,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace"}},"By "+g.deadline)),
+                    e("div",{style:{display:"flex",gap:8,alignItems:"center"}},
+                      e("div",{style:{fontSize:24,fontFamily:"'Playfair Display',serif",color:g.color,fontWeight:700}},pct.toFixed(0)+"%"),
+                      e("button",{onClick:function(){setEditGoalId(g.id);setShowGF(false);},style:{background:"rgba(255,193,80,0.1)",border:"none",borderRadius:6,color:C.gold,padding:"4px 8px",fontSize:12,cursor:"pointer"}},"✎"),
+                      e("button",{onClick:function(){saveGoals(goals.filter(function(x){return x.id!==g.id;}));},style:{background:"rgba(255,94,108,0.1)",border:"none",borderRadius:6,color:C.red,padding:"4px 8px",fontSize:12}},"✕")
+                    )
+                  ),
+                  e("div",{style:{background:"rgba(255,255,255,0.05)",borderRadius:8,height:8,overflow:"hidden",marginBottom:16}},e("div",{style:{width:pct+"%",height:"100%",background:"linear-gradient(90deg,"+g.color+","+g.color+"88)",borderRadius:8}})),
+                  e("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}},
+                    [["SAVED",fmt(g.current),C.teal],["REMAINING",fmt(g.target-g.current),C.red],["GOAL",fmt(g.target),C.text]].map(function(x){
+                      return e("div",{key:x[0],style:{textAlign:"center"}},e("div",{style:{fontSize:10,color:C.textMuted,marginBottom:3,letterSpacing:1.5,fontFamily:"'JetBrains Mono',monospace"}},x[0]),e("div",{style:{fontFamily:"'JetBrains Mono',monospace",color:x[2],fontWeight:600,fontSize:13}},x[1]));
+                    })
+                  )
                 )
-              ),
-              e("div",{style:{background:"rgba(255,255,255,0.05)",borderRadius:8,height:8,overflow:"hidden",marginBottom:16}},e("div",{style:{width:pct+"%",height:"100%",background:"linear-gradient(90deg,"+g.color+","+g.color+"88)",borderRadius:8}})),
-              e("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}},
-                [["SAVED",fmt(g.current),C.teal],["REMAINING",fmt(g.target-g.current),C.red],["GOAL",fmt(g.target),C.text]].map(function(x){
-                  return e("div",{key:x[0],style:{textAlign:"center"}},e("div",{style:{fontSize:10,color:C.textMuted,marginBottom:3,letterSpacing:1.5,fontFamily:"'JetBrains Mono',monospace"}},x[0]),e("div",{style:{fontFamily:"'JetBrains Mono',monospace",color:x[2],fontWeight:600,fontSize:13}},x[1]));
-                })
-              )
             );
           })
         )

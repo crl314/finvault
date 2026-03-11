@@ -615,7 +615,7 @@ function App(){
     if(t.csvPlPct)hMap[k].csvPlPct=t.csvPlPct;
     if(t.category==="Sell")hMap[k].sold+=t.amount;else hMap[k].bought+=t.amount;
   });
-  var holdings=Object.values(hMap).map(function(h){return Object.assign({},h,{value:Math.max(0,h.bought-h.sold),cost:h.bought});}).filter(function(h){return h.value>0;}).sort(function(a,b){return b.value-a.value;});
+  var holdings=Object.values(hMap).map(function(h){return Object.assign({},h,{value:Math.max(0,h.bought-h.sold),cost:h.bought});}).filter(function(h){return h.value>0;}).sort(function(a,b){return (b.currentValue||b.value)-(a.currentValue||a.value);});
   var totInv=holdings.reduce(function(s,h){return s+h.cost;},0);
 
   var expCat=Object.entries(fil.filter(function(t){return t.type==="expense";}).reduce(function(a,t){a[t.category]=(a[t.category]||0)+t.amount;return a;},{})).map(function(x){return{name:x[0],value:x[1]};}).sort(function(a,b){return b.value-a.value;});
@@ -692,7 +692,7 @@ function App(){
       e("div",{style:{maxWidth:1400,margin:"0 auto",display:"flex",alignItems:"center",justifyContent:"space-between",height:64}},
         e("div",null,
           e("span",{style:{fontFamily:"'Playfair Display',serif",fontSize:20,color:C.gold}},"◈ FINVAULT"),
-          e("span",{style:{fontSize:10,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace",marginLeft:8}},"v3.3"),
+          e("span",{style:{fontSize:10,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace",marginLeft:8}},"v3.4"),
           e("span",{style:{marginLeft:12,fontSize:11,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace"}},"PERSONAL WEALTH OS")
         ),
         e("div",{style:{display:"flex",gap:2,background:"rgba(255,255,255,0.03)",borderRadius:10,padding:4,border:"1px solid rgba(255,255,255,0.06)"}},

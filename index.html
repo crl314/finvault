@@ -722,9 +722,13 @@ function App(){
           e(KPI,{label:"Bank Balance",value:bankBal!=null?fmt(bankBal):"—",sub:"Bank of America",color:C.bofa,icon:"🏦"}),
           e(KPI,{label:"Monthly Income",value:fmt(mInc),sub:lMo+" · Google Payroll",color:C.teal,icon:"📈"}),
           e(KPI,{label:"Monthly Expenses",value:fmt(mExp),sub:lMo,trend:-1,color:C.red,icon:"💸"}),
-          e(KPI,{label:"Vested $GOOG ("+VESTED_SHARES+" shares)",value:vestedValue!=null?fmt(vestedValue):"Click price to set",
-            sub:googEditMode?
-              e("span",{style:{display:"inline-flex",alignItems:"center",gap:6}},
+          e(Card,{style:{position:"relative",overflow:"hidden"}},
+            e("div",{style:{position:"absolute",top:-20,right:-20,width:100,height:100,background:"radial-gradient(circle,#4285F420,transparent 70%)",pointerEvents:"none"}}),
+            e("div",{style:{fontSize:20,marginBottom:6}},"📦"),
+            e("div",{style:{fontSize:10,letterSpacing:2.5,color:C.textDim,textTransform:"uppercase",fontFamily:"'JetBrains Mono',monospace",marginBottom:8}},"Vested $GOOG ("+VESTED_SHARES+" shares)"),
+            e("div",{style:{fontSize:26,fontWeight:700,color:C.text,fontFamily:"'Playfair Display',serif",marginBottom:4}},vestedValue!=null?fmt(vestedValue):"—"),
+            googEditMode?
+              e("div",{style:{display:"flex",alignItems:"center",gap:6,marginTop:4}},
                 e("span",{style:{color:C.textMuted,fontSize:11}},"$"),
                 e("input",{autoFocus:true,type:"number",value:googEditVal,
                   onChange:function(ev){setGoogEditVal(ev.target.value);},
@@ -741,18 +745,22 @@ function App(){
                     if(!isNaN(p)&&p>0){localStorage.setItem("fv_goog_price",p);setGoogManualPrice(p);}
                     setGoogEditMode(false);
                   },
-                  style:{width:80,background:"rgba(255,255,255,0.08)",border:"1px solid "+C.gold,borderRadius:4,color:C.text,fontSize:12,padding:"2px 6px",fontFamily:"'JetBrains Mono',monospace"}
+                  style:{width:90,background:"rgba(255,255,255,0.08)",border:"1px solid "+C.gold,borderRadius:4,color:C.text,fontSize:13,padding:"3px 8px",fontFamily:"'JetBrains Mono',monospace"}
                 }),
-                e("span",{style:{fontSize:10,color:C.textMuted}},"↵ to save")
+                e("span",{style:{fontSize:10,color:C.textMuted}},"↵ save")
               ):
-              e("span",{onClick:function(){setGoogEditVal(googPrice?googPrice.toFixed(2):"");setGoogEditMode(true);},
-                style:{cursor:"pointer",textDecoration:"underline dotted",color:googPrice?C.textDim:C.gold,fontSize:11}},
-                googPrice?"$"+googPrice.toFixed(2)+" · click to update":"✎ set price manually"
-              ),
-            trend:googChange,color:"#4285F4",icon:"📦"}),
-          e(KPI,{label:"Unvested $GOOG ("+UNVESTED_SHARES+" shares)",value:unvestedValue!=null?fmt(unvestedValue):"—",
-            sub:googPrice!=null?e("span",{style:{fontSize:11,color:C.textMuted}},"$"+googPrice.toFixed(2)+" per share"):e("span",{style:{fontSize:11,color:C.textMuted}},"Set price on vested card ↑"),
-            trend:googChange,color:"#34A853",icon:"🔒"}),
+              e("div",{onClick:function(){setGoogEditVal(googPrice?googPrice.toFixed(2):"");setGoogEditMode(true);},
+                style:{cursor:"pointer",fontSize:12,color:googPrice?C.textDim:C.gold,marginTop:4}},
+                googPrice?"$"+googPrice.toFixed(2)+" · ✎ update":"✎ click to set price"
+              )
+          ),
+          e(Card,{style:{position:"relative",overflow:"hidden"}},
+            e("div",{style:{position:"absolute",top:-20,right:-20,width:100,height:100,background:"radial-gradient(circle,#34A85320,transparent 70%)",pointerEvents:"none"}}),
+            e("div",{style:{fontSize:20,marginBottom:6}},"🔒"),
+            e("div",{style:{fontSize:10,letterSpacing:2.5,color:C.textDim,textTransform:"uppercase",fontFamily:"'JetBrains Mono',monospace",marginBottom:8}},"Unvested $GOOG ("+UNVESTED_SHARES+" shares)"),
+            e("div",{style:{fontSize:26,fontWeight:700,color:C.text,fontFamily:"'Playfair Display',serif",marginBottom:4}},unvestedValue!=null?fmt(unvestedValue):"—"),
+            e("div",{style:{fontSize:12,color:C.textDim,marginTop:4}},googPrice?"$"+googPrice.toFixed(2)+" per share":"Set price on vested card ↑")
+          ),
           e(KPI,{label:"Net Savings",value:fmt(mNet),trend:mNet,sub:mInc>0?Math.round((mNet/mInc)*100)+"% savings rate":"",color:C.purple,icon:"💰"}),
           e(KPI,{label:"Net Worth",value:fmt(netWorthNow),sub:"Bank + Portfolio",color:C.orange,icon:"🏆"})
         ),

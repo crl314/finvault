@@ -512,6 +512,23 @@ function App(){
   var [prices,setPrices]=useState({});
   var [pLoad,setPLoad]=useState(false);
   var [showGF,setShowGF]=useState(false);
+
+  // ── Recurring Expenses ──
+  var DEFAULT_RECURRING=[
+    {id:"rec1",name:"Housing",amount:4331,day:30,category:"Housing",fixed:true},
+    {id:"rec2",name:"Netflix",amount:27.55,day:2,category:"Subscriptions",fixed:true},
+    {id:"rec3",name:"Keley English Classes",amount:85,day:null,category:"Education",fixed:true},
+    {id:"rec4",name:"AT&T",amount:150,day:9,category:"AT&T",fixed:true},
+    {id:"rec5",name:"Robinhood Credit Card",amount:null,day:null,category:"Credit Card",fixed:false},
+    {id:"rec6",name:"ComEd",amount:null,day:12,category:"Energy",fixed:false},
+    {id:"rec7",name:"BofA Credit Card - Caue",amount:null,day:16,category:"Credit Card",fixed:false},
+    {id:"rec8",name:"BofA Credit Card - Keley",amount:null,day:16,category:"Credit Card",fixed:false},
+    {id:"rec9",name:"Personal Trainer",amount:1000,day:30,category:"Health",fixed:true}
+  ];
+  var [recurring,setRecurring]=useState(function(){return load("fv_recurring")||DEFAULT_RECURRING;});
+  var [recEditId,setRecEditId]=useState(null);
+  var [recEditVal,setRecEditVal]=useState("");
+  function saveRecurring(r){setRecurring(r);localStorage.setItem("fv_recurring",JSON.stringify(r));}
   var [editGoalId,setEditGoalId]=useState(null);
   var [txSearch,setTxSearch]=useState("");
   var [briefMarket,setBriefMarket]=useState(null);
@@ -673,15 +690,15 @@ function App(){
   var totalMorgan=allEarningsTx.filter(function(t){return t.description.toUpperCase().indexOf("MORGAN STANLEY")!==-1;}).reduce(function(s,t){return s+t.amount;},0);
 
   // ── Vested GOOG ──
-  var VESTED_SHARES = 39;
-  var UNVESTED_SHARES = 865;
+  var VESTED_SHARES = 63;
+  var UNVESTED_SHARES = 831;
   var googPrice = prices["GOOG"] ? prices["GOOG"].price : googManualPrice;
   var googChange = prices["GOOG"] ? prices["GOOG"].change : null;
   var vestedValue = googPrice ? VESTED_SHARES * googPrice : null;
   var unvestedValue = googPrice ? UNVESTED_SHARES * googPrice : null;
 
   // ── Tabs ──
-  var TABS=["overview","earnings","transactions","investments","goals","briefing","import"];
+  var TABS=["overview","earnings","transactions","investments","goals","recurring","briefing","import"];
   function ns(a){return{padding:"8px 18px",borderRadius:8,border:"none",cursor:"pointer",fontSize:12,fontWeight:500,background:a?C.goldGlow:"transparent",color:a?C.gold:C.textDim,borderBottom:a?"2px solid "+C.gold:"2px solid transparent",transition:"all 0.2s"};}
   var inp={width:"100%",background:"rgba(255,255,255,0.05)",border:"1px solid "+C.border,borderRadius:8,padding:"10px 12px",color:C.text,fontSize:14,outline:"none",boxSizing:"border-box"};
 
@@ -693,11 +710,11 @@ function App(){
       e("div",{style:{maxWidth:1400,margin:"0 auto",display:"flex",alignItems:"center",justifyContent:"space-between",height:64}},
         e("div",null,
           e("span",{style:{fontFamily:"'Playfair Display',serif",fontSize:20,color:C.gold}},"◈ FINVAULT"),
-          e("span",{style:{fontSize:10,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace",marginLeft:8}},"v3.5"),
+          e("span",{style:{fontSize:10,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace",marginLeft:8}},"v3.8"),
           e("span",{style:{marginLeft:12,fontSize:11,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace"}},"PERSONAL WEALTH OS")
         ),
         e("div",{style:{display:"flex",gap:2,background:"rgba(255,255,255,0.03)",borderRadius:10,padding:4,border:"1px solid rgba(255,255,255,0.06)"}},
-          TABS.map(function(t){return e("button",{key:t,style:ns(tab===t),onClick:function(){setTab(t);}},t==="import"?"⬆ Import":t==="briefing"?"✦ Briefing":t.charAt(0).toUpperCase()+t.slice(1));})
+          TABS.map(function(t){return e("button",{key:t,style:ns(tab===t),onClick:function(){setTab(t);}},t==="import"?"⬆ Import":t==="briefing"?"✦ Briefing":t==="recurring"?"🔁 Recurring":t.charAt(0).toUpperCase()+t.slice(1));})
         ),
         e("div",{style:{display:"flex",alignItems:"center",gap:12}},
           e("span",{style:{fontSize:12,color:C.textDim,fontFamily:"'JetBrains Mono',monospace"}},tx.length+" records ",e("span",{style:{color:C.teal}},"● saved")),
@@ -1099,6 +1116,96 @@ function App(){
         )
       ),
 
+      // RECURRING EXPENSES
+      tab==="recurring"&&e("div",null,
+        e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:24}},
+          e("div",null,
+            e("div",{style:{fontSize:22,fontWeight:700,color:C.gold,fontFamily:"'Playfair Display',serif",marginBottom:4}},"🔁 Recurring Expenses"),
+            e("div",{style:{fontSize:13,color:C.textMuted}},"Monthly fixed & variable bills")
+          ),
+          e("div",{style:{padding:"10px 18px",background:"rgba(255,193,80,0.08)",border:"1px solid "+C.border,borderRadius:10,textAlign:"center"}},
+            e("div",{style:{fontSize:11,color:C.textMuted,letterSpacing:1,marginBottom:2}},"FIXED MONTHLY"),
+            e("div",{style:{fontSize:20,fontWeight:700,color:C.gold,fontFamily:"'Playfair Display',serif"}},"$"+recurring.filter(function(r){return r.fixed&&r.amount;}).reduce(function(s,r){return s+r.amount;},0).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2}))
+          )
+        ),
+        e("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}},
+          recurring.map(function(r){
+            var isEditing=recEditId===r.id;
+            var months=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+            var curMonth=new Date().getMonth();
+            // Get saved variable amounts for this item (last 6 months)
+            var histKey="fv_rec_hist_"+r.id;
+            var hist=JSON.parse(localStorage.getItem(histKey)||"{}");
+            return e(Card,{key:r.id,style:{position:"relative",borderColor:r.fixed?"rgba(255,193,80,0.2)":"rgba(62,207,178,0.15)"}},
+              e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12}},
+                e("div",null,
+                  e("div",{style:{fontSize:15,fontWeight:700,color:C.text,marginBottom:3}},r.name),
+                  e("div",{style:{display:"flex",gap:8,alignItems:"center"}},
+                    e("span",{style:{fontSize:10,padding:"2px 8px",borderRadius:20,background:r.fixed?"rgba(255,193,80,0.12)":"rgba(62,207,178,0.12)",color:r.fixed?C.gold:C.teal,fontFamily:"'JetBrains Mono',monospace",letterSpacing:0.5}},r.fixed?"FIXED":"VARIABLE"),
+                    r.day&&e("span",{style:{fontSize:11,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace"}},"Day "+r.day)
+                  )
+                ),
+                e("div",{style:{textAlign:"right"}},
+                  r.fixed?
+                    e("div",{style:{fontSize:20,fontWeight:700,color:C.text,fontFamily:"'Playfair Display',serif"}},"$"+r.amount.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})):
+                    e("div",null,
+                      isEditing?
+                        e("div",{style:{display:"flex",alignItems:"center",gap:6}},
+                          e("span",{style:{fontSize:13,color:C.textMuted}},"$"),
+                          e("input",{autoFocus:true,type:"number",value:recEditVal,
+                            onChange:function(ev){setRecEditVal(ev.target.value);},
+                            onKeyDown:function(ev){
+                              if(ev.key==="Enter"){
+                                var p=parseFloat(recEditVal);
+                                if(!isNaN(p)&&p>=0){
+                                  var mo=new Date().toISOString().slice(0,7);
+                                  var h=JSON.parse(localStorage.getItem(histKey)||"{}");
+                                  h[mo]=p;
+                                  localStorage.setItem(histKey,JSON.stringify(h));
+                                  var updated=recurring.map(function(x){return x.id===r.id?Object.assign({},x,{amount:p}):x;});
+                                  saveRecurring(updated);
+                                }
+                                setRecEditId(null);setRecEditVal("");
+                              }
+                              if(ev.key==="Escape"){setRecEditId(null);setRecEditVal("");}
+                            },
+                            onBlur:function(){setRecEditId(null);setRecEditVal("");},
+                            style:{width:80,background:"rgba(255,255,255,0.08)",border:"1px solid "+C.teal,borderRadius:4,color:C.text,fontSize:14,padding:"3px 8px",fontFamily:"'JetBrains Mono',monospace"}
+                          }),
+                          e("span",{style:{fontSize:10,color:C.textMuted}},"↵")
+                        ):
+                        e("div",{onClick:function(){setRecEditId(r.id);setRecEditVal(r.amount!=null?r.amount.toFixed(2):"");},style:{cursor:"pointer"}},
+                          r.amount!=null?
+                            e("div",{style:{fontSize:20,fontWeight:700,color:C.text,fontFamily:"'Playfair Display',serif"}},"$"+r.amount.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})):
+                            e("div",{style:{fontSize:13,color:C.teal,textDecoration:"underline dotted"}},"✎ set this month's amount")
+                        )
+                    )
+                )
+              ),
+              // History sparkline for variable items
+              !r.fixed&&Object.keys(hist).length>0?e("div",{style:{marginTop:8,paddingTop:8,borderTop:"1px solid rgba(255,255,255,0.05)"}},
+                e("div",{style:{fontSize:10,color:C.textMuted,letterSpacing:1,marginBottom:6,fontFamily:"'JetBrains Mono',monospace"}},"RECENT MONTHS"),
+                e("div",{style:{display:"flex",gap:8}},
+                  Object.entries(hist).sort(function(a,b){return a[0].localeCompare(b[0]);}).slice(-4).map(function(entry){
+                    var mo=new Date(entry[0]+"-15").toLocaleDateString("en-US",{month:"short"});
+                    return e("div",{key:entry[0],style:{textAlign:"center",flex:1}},
+                      e("div",{style:{fontSize:11,fontWeight:600,color:C.teal,fontFamily:"'JetBrains Mono',monospace"}},"$"+entry[1].toFixed(0)),
+                      e("div",{style:{fontSize:10,color:C.textMuted}},mo)
+                    );
+                  })
+                )
+              ):null
+            );
+          })
+        ),
+        e("div",{style:{marginTop:20,padding:"14px 20px",background:"rgba(255,255,255,0.02)",border:"1px solid "+C.border,borderRadius:10,display:"flex",justifyContent:"space-between",alignItems:"center"}},
+          e("div",{style:{fontSize:13,color:C.textMuted}},"Variable bills update each month — click the amount to set this month's value"),
+          e("div",{style:{fontSize:13,color:C.textDim}},
+            e("span",{style:{color:C.textMuted}},"Est. total incl. variable: "),
+            e("span",{style:{color:C.gold,fontWeight:700,fontFamily:"'JetBrains Mono',monospace"}},"$"+recurring.reduce(function(s,r){return s+(r.amount||0);},0).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2}))
+          )
+        )
+      ),
       // IMPORT
       // BRIEFING
       tab==="briefing"&&e("div",null,

@@ -578,11 +578,46 @@ function App(){
   }
 
   // Symbols that have no live price feed (private funds etc)
-  var NO_PRICE={"INNOVATION FUND":true};
+  var NO_PRICE={"INNOVATION FUND":true,"ROBINHOOD HYS":true,"ARKVX":true};
+  var FINNHUB_KEY="d757jehr01qk56kbo1hgd757jehr01qk56kbo1i0";
 
   var fetchPrices=useCallback(async function(syms){
-    // Prices come from portfolio CSV (csvPrice field) - no proxy needed
+    if(!syms||!syms.length)return;
+    var fetchable=syms.filter(function(s){return !NO_PRICE[s]&&s&&s.length<10;});
+    if(!fetchable.length){setPLoad(false);return;}
+    setPLoad(true);
+    try{
+      // Batch fetch — Finnhub requires one call per symbol but is fast
+      var results=await Promise.allSettled(fetchable.map(async function(sym){
+        var res=await fetch("https://finnhub.io/api/v1/quote?symbol="+sym+"&token="+FINNHUB_KEY);
+        if(!res.ok)return null;
+        var d=await res.json();
+        // d.c = current price, d.dp = % change, d.pc = prev close
+        if(!d||!d.c||d.c===0)return null;
+        return [sym,{price:d.c,change:d.dp,prevClose:d.pc}];
+      }));
+      var newPrices={};
+      results.forEach(function(r){
+        if(r.status==="fulfilled"&&r.value){newPrices[r.value[0]]=r.value[1];}
+      });
+      if(Object.keys(newPrices).length>0){
+        setPrices(function(prev){return Object.assign({},prev,newPrices);});
+      }
+    }catch(e){console.warn("Finnhub fetch error:",e);}
     setPLoad(false);
+  },[]);
+
+  // Auto-fetch Fear & Greed from alternative.me (no key needed, CORS enabled)
+  useEffect(function(){
+    fetch("https://api.alternative.me/fng/?limit=1")
+      .then(function(r){return r.json();})
+      .then(function(d){
+        if(d&&d.data&&d.data[0]){
+          var v=parseInt(d.data[0].value);
+          if(!isNaN(v))saveFng(v);
+        }
+      })
+      .catch(function(){});
   },[]);
 
   // Always fetch GOOG on mount for vested shares KPI
@@ -718,7 +753,7 @@ function App(){
       e("div",{style:{maxWidth:1400,margin:"0 auto",display:"flex",alignItems:"center",justifyContent:"space-between",height:64}},
         e("div",null,
           e("span",{style:{fontFamily:"'Playfair Display',serif",fontSize:20,color:C.gold}},"◈ FINVAULT"),
-          e("span",{style:{fontSize:10,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace",marginLeft:8}},"v3.9"),
+          e("span",{style:{fontSize:10,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace",marginLeft:8}},"v4.0"),
           e("span",{style:{marginLeft:12,fontSize:11,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace"}},"PERSONAL WEALTH OS")
         ),
         e("div",{style:{display:"flex",gap:2,background:"rgba(255,255,255,0.03)",borderRadius:10,padding:4,border:"1px solid rgba(255,255,255,0.06)"}},
@@ -777,7 +812,7 @@ function App(){
               ):
               e("div",{onClick:function(){setGoogEditVal(googPrice?googPrice.toFixed(2):"");setGoogEditMode(true);},
                 style:{cursor:"pointer",fontSize:12,color:googPrice?C.textDim:C.gold,marginTop:4}},
-                googPrice?"$"+googPrice.toFixed(2)+" · ✎ update":"✎ click to set price"
+                googPrice?"$"+googPrice.toFixed(2)+(prices["GOOG"]?" · live":"  · ✎ update"):"✎ click to set price"
               )
           ),
           e(Card,{style:{position:"relative",overflow:"hidden"}},

@@ -753,7 +753,7 @@ function App(){
       e("div",{style:{maxWidth:1400,margin:"0 auto",display:"flex",alignItems:"center",justifyContent:"space-between",height:64}},
         e("div",null,
           e("span",{style:{fontFamily:"'Playfair Display',serif",fontSize:20,color:C.gold}},"◈ FINVAULT"),
-          e("span",{style:{fontSize:10,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace",marginLeft:8}},"v4.0"),
+          e("span",{style:{fontSize:10,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace",marginLeft:8}},"v4.1"),
           e("span",{style:{marginLeft:12,fontSize:11,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace"}},"PERSONAL WEALTH OS")
         ),
         e("div",{style:{display:"flex",gap:2,background:"rgba(255,255,255,0.03)",borderRadius:10,padding:4,border:"1px solid rgba(255,255,255,0.06)"}},
@@ -1031,43 +1031,54 @@ function App(){
             // ── Top Movers ──
             var withChange=holdings.map(function(h){
               var disp=prices[h.symbol]||(h.csvPrice?{price:h.csvPrice,change:h.csvPlPct,fromCsv:true}:null);
-              var dayChange=disp?disp.change:(h.csvPlPct!==0?h.csvPlPct:null);
-              return Object.assign({},h,{dispPrice:disp,dayChange:dayChange});
-            }).filter(function(h){return h.dayChange!==null;});
-            var topGainers=withChange.slice().sort(function(a,b){return b.dayChange-a.dayChange;}).slice(0,3);
-            var topLosers=withChange.slice().sort(function(a,b){return a.dayChange-b.dayChange;}).slice(0,3);
-            function MoverRow(h){
-              var col=h.dayChange>=0?C.teal:C.red;
+              var dayChange=disp&&!disp.fromCsv?disp.change:null;
+              var overallChange=h.cost>0?((h.currentValue-h.cost)/h.cost*100):null;
+              return Object.assign({},h,{dispPrice:disp,dayChange:dayChange,overallChange:overallChange});
+            });
+            var withDay=withChange.filter(function(h){return h.dayChange!==null;});
+            var withOverall=withChange.filter(function(h){return h.overallChange!==null;});
+            var topDayG=withDay.slice().sort(function(a,b){return b.dayChange-a.dayChange;}).slice(0,3);
+            var topDayL=withDay.slice().sort(function(a,b){return a.dayChange-b.dayChange;}).slice(0,3);
+            var topOvG=withOverall.slice().sort(function(a,b){return b.overallChange-a.overallChange;}).slice(0,3);
+            var topOvL=withOverall.slice().sort(function(a,b){return a.overallChange-b.overallChange;}).slice(0,3);
+            function MoverRow(h,pct,col,sub){
               return e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"9px 0",borderBottom:"1px solid rgba(255,255,255,0.04)"}},
                 e("div",{style:{display:"flex",alignItems:"center",gap:10}},
                   e("div",{style:{width:34,height:34,borderRadius:8,background:"rgba(255,255,255,0.05)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:700,color:C.gold,fontFamily:"'JetBrains Mono',monospace"}},h.symbol.slice(0,4)),
                   e("div",null,
                     e("div",{style:{fontSize:13,fontWeight:600,color:C.text}},h.symbol),
-                    e("div",{style:{fontSize:11,color:C.textMuted,maxWidth:110,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}},h.name)
+                    e("div",{style:{fontSize:11,color:C.textMuted,maxWidth:110,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}},sub)
                   )
                 ),
                 e("div",{style:{textAlign:"right"}},
-                  e("div",{style:{fontSize:14,fontWeight:700,color:col,fontFamily:"'JetBrains Mono',monospace"}},(h.dayChange>=0?"+":"")+h.dayChange.toFixed(2)+"%"),
-                  e("div",{style:{fontSize:11,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace"}},h.dispPrice?"$"+h.dispPrice.price.toFixed(2)+(h.dispPrice.fromCsv?" · CSV":""):"P&L overall")
+                  e("div",{style:{fontSize:14,fontWeight:700,color:col,fontFamily:"'JetBrains Mono',monospace"}},(pct>=0?"+":"")+pct.toFixed(2)+"%"),
+                  e("div",{style:{fontSize:11,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace"}},h.dispPrice?"$"+h.dispPrice.price.toFixed(2):"—")
                 )
               );
             }
-            var moversEl=e("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:20}},
-              e(Card,null,
+            function MoverCard(icon,title,color,items,pctFn,subFn){
+              return e(Card,null,
                 e("div",{style:{display:"flex",alignItems:"center",gap:8,marginBottom:14}},
-                  e("span",{style:{fontSize:16}},"🚀"),
-                  e("span",{style:{fontSize:14,fontWeight:700,color:C.teal,fontFamily:"'JetBrains Mono',monospace",letterSpacing:0.5}},"Top Gainers")
+                  e("span",{style:{fontSize:16}},icon),
+                  e("span",{style:{fontSize:14,fontWeight:700,color:color,fontFamily:"'JetBrains Mono',monospace",letterSpacing:0.5}},title)
                 ),
-                topGainers.length>0?topGainers.map(function(h,i){return e("div",{key:i},MoverRow(h));})
-                :e("div",{style:{color:C.textMuted,fontSize:13,padding:"10px 0"}},"No price data — re-parse CSV")
+                items.length>0?items.map(function(h,i){
+                  var pct=pctFn(h);
+                  var col=pct>=0?C.teal:C.red;
+                  return e("div",{key:i},MoverRow(h,pct,col,subFn(h)));
+                }):e("div",{style:{color:C.textMuted,fontSize:13,padding:"10px 0"}},"No data")
+              );
+            }
+            var moversEl=e("div",{style:{marginBottom:20}},
+              e("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:12}},
+                e("div",{style:{fontSize:11,color:C.textMuted,letterSpacing:2,textTransform:"uppercase",fontFamily:"'JetBrains Mono',monospace",paddingLeft:4}},"📅 Today's Movers"),
+                e("div",{style:{fontSize:11,color:C.textMuted,letterSpacing:2,textTransform:"uppercase",fontFamily:"'JetBrains Mono',monospace",paddingLeft:4}},"📊 Overall P&L")
               ),
-              e(Card,null,
-                e("div",{style:{display:"flex",alignItems:"center",gap:8,marginBottom:14}},
-                  e("span",{style:{fontSize:16}},"📉"),
-                  e("span",{style:{fontSize:14,fontWeight:700,color:C.red,fontFamily:"'JetBrains Mono',monospace",letterSpacing:0.5}},"Top Losers")
-                ),
-                topLosers.length>0?topLosers.map(function(h,i){return e("div",{key:i},MoverRow(h));})
-                :e("div",{style:{color:C.textMuted,fontSize:13,padding:"10px 0"}},"No price data — re-parse CSV")
+              e("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:16}},
+                MoverCard("🚀","Day Gainers",C.teal,topDayG,function(h){return h.dayChange;},function(h){return h.dispPrice&&!h.dispPrice.fromCsv?"live":"CSV";}),
+                MoverCard("📉","Day Losers",C.red,topDayL,function(h){return h.dayChange;},function(h){return h.dispPrice&&!h.dispPrice.fromCsv?"live":"CSV";}),
+                MoverCard("🏆","Best Overall",C.teal,topOvG,function(h){return h.overallChange;},function(h){return "$"+h.cost.toFixed(0)+" cost";}),
+                MoverCard("⚠️","Worst Overall",C.red,topOvL,function(h){return h.overallChange;},function(h){return "$"+h.cost.toFixed(0)+" cost";})
               )
             );
 

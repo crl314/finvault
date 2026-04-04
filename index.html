@@ -513,6 +513,39 @@ function App(){
   var [pLoad,setPLoad]=useState(false);
   var [showGF,setShowGF]=useState(false);
 
+  // ── Catalyst Tracker ──
+  var DEFAULT_TRACKER={
+    updated:"Apr 3, 2026",
+    macro:"Iran war in progress. Oil ~$88/bbl. Fed on hold. Tariff shock (Liberation Day) driving risk-off. VIX elevated. Dollar weakening. Stagflation fears building.",
+    positions:[
+      {sym:"NVDA",name:"NVIDIA",thesis:"Core AI infrastructure. Largest position. Vulnerable to capex slowdown fears and anti-HALO rotation.",action:"Hold",conviction:"High",urgency:"watch",note:"Monitor for tariff/export restriction headlines. Puts as hedge if >15% of portfolio."},
+      {sym:"AXTI",name:"AXT Inc.",thesis:"Optical substrate supplier for AI datacenter 800G+ interconnects. Star performer at +24% P/L.",action:"Hold",conviction:"High",urgency:"hold",note:"Best risk/reward in optics book. Let it run."},
+      {sym:"LITE",name:"Lumentum",thesis:"Optical components for AI datacenters. Situational Awareness LP #4 position. 1-year horizon.",action:"Hold",conviction:"High",urgency:"hold",note:"Aligned with Aschenbrenner thesis. Patient hold."},
+      {sym:"PLTR",name:"Palantir",thesis:"Agentic AI platform. Government contracts insulated from tariff shock.",action:"Hold",conviction:"Medium",urgency:"hold",note:"Expensive but thesis intact. Don't add at these levels."},
+      {sym:"META",name:"Meta",thesis:"Core AI + ad platform. Anti-HALO in current macro. Down 18%.",action:"Trim",conviction:"Low",urgency:"soon",note:"Ad revenue exposed to consumer slowdown. Consider trimming into any rally."},
+      {sym:"HOOD",name:"Robinhood",thesis:"Fintech growth. Position legacy — down 41%. No Iran war tailwind.",action:"Trim",conviction:"Low",urgency:"now",note:"Continue reducing. No catalyst visible. Cost basis raised."},
+      {sym:"BE",name:"Bloom Energy",thesis:"Clean energy infrastructure. HALO-aligned. Down 22% — thesis intact.",action:"Hold",conviction:"Medium",urgency:"hold",note:"Iran war = energy transition relevance. Patient hold."},
+      {sym:"MU",name:"Micron",thesis:"HBM memory for AI. Cyclical but strategic. Down 22%.",action:"Hold",conviction:"Medium",urgency:"watch",note:"Watch memory pricing cycle. Add on weakness if thesis holds."},
+      {sym:"AGRO",name:"Adecoagro",thesis:"Iran War Long. Food/fertilizer inflation. Tether-backed. +13% P/L.",action:"Add",conviction:"High",urgency:"hold",note:"Iran thesis winner. Scale gradually."},
+      {sym:"VG",name:"Venture Global",thesis:"Iran War Long. LNG supply disruption play. Qatar/Hormuz catalyst.",action:"Add",conviction:"High",urgency:"hold",note:"Strongest Iran thesis name. Best risk/reward."},
+      {sym:"IGV",name:"IGV Short",thesis:"Short SaaS ETF. AI disrupts seat-based licensing. Iran risk-off.",action:"Hold",conviction:"High",urgency:"hold",note:"1x short, no decay. Dual thesis (AI disruption + macro). Core hedge."},
+      {sym:"SARK",name:"SARK",thesis:"Inverse ARKK. 2x leveraged since July 2024. Short speculative tech.",action:"Hold",conviction:"Medium",urgency:"watch",note:"Decay risk at 2x. Monitor closely. Prefer ARKK puts for prolonged thesis."},
+      {sym:"GLD",name:"Gold ETF",thesis:"Safe haven. Iran war + dollar weakness + stagflation hedge.",action:"Hold",conviction:"High",urgency:"hold",note:"Core macro hedge. Let it run."},
+      {sym:"SIVR",name:"Silver ETF",thesis:"Industrial metals + safe haven. Down 22%.",action:"Hold",conviction:"Medium",urgency:"hold",note:"More volatile than GLD. Smaller sizing appropriate."},
+      {sym:"FSLY",name:"Fastly",thesis:"Agentic AI Infra. CDN/edge layer for agent traffic. Starter position.",action:"Watch",conviction:"Low",urgency:"watch",note:"Citrini agentic thesis. Very small position. Monitor thesis development."},
+      {sym:"NET",name:"Cloudflare",thesis:"Agentic AI Infra. Workers AI platform. Agent orchestration layer.",action:"Watch",conviction:"Medium",urgency:"watch",note:"Best pure-play agentic infrastructure. Build position on pullbacks."}
+    ],
+    actions:[
+      {rank:1,action:"Continue trimming HOOD",rationale:"Largest unrealized loss. No catalyst. No thesis.",urgency:"now"},
+      {rank:2,action:"Scale VG + AGRO",rationale:"Iran thesis underweighted. Both positions working.",urgency:"soon"},
+      {rank:3,action:"Monitor SARK decay",rationale:"2x leverage since Jul 2024. Not a long-term hold.",urgency:"watch"},
+      {rank:4,action:"Add NET on pullback",rationale:"Best agentic infra name. Tariff shock = entry opportunity.",urgency:"watch"},
+      {rank:5,action:"Evaluate META trim",rationale:"Anti-HALO. Ad exposure in slowdown. No Iran tailwind.",urgency:"soon"}
+    ]
+  };
+  var [tracker,setTracker]=useState(function(){return load("fv_tracker")||DEFAULT_TRACKER;});
+  function saveTracker(t){setTracker(t);localStorage.setItem("fv_tracker",JSON.stringify(t));}
+
   // ── Recurring Expenses ──
   var DEFAULT_RECURRING=[
     {id:"rec1",name:"Housing",amount:4331,day:30,category:"Housing",fixed:true},
@@ -741,7 +774,7 @@ function App(){
   var unvestedValue = googPrice ? UNVESTED_SHARES * googPrice : null;
 
   // ── Tabs ──
-  var TABS=["overview","earnings","transactions","investments","goals","recurring","briefing","import"];
+  var TABS=["overview","earnings","transactions","investments","goals","recurring","tracker","briefing","import"];
   function ns(a){return{padding:"8px 18px",borderRadius:8,border:"none",cursor:"pointer",fontSize:12,fontWeight:500,background:a?C.goldGlow:"transparent",color:a?C.gold:C.textDim,borderBottom:a?"2px solid "+C.gold:"2px solid transparent",transition:"all 0.2s"};}
   var inp={width:"100%",background:"rgba(255,255,255,0.05)",border:"1px solid "+C.border,borderRadius:8,padding:"10px 12px",color:C.text,fontSize:14,outline:"none",boxSizing:"border-box"};
 
@@ -753,11 +786,11 @@ function App(){
       e("div",{style:{maxWidth:1400,margin:"0 auto",display:"flex",alignItems:"center",justifyContent:"space-between",height:64}},
         e("div",null,
           e("span",{style:{fontFamily:"'Playfair Display',serif",fontSize:20,color:C.gold}},"◈ FINVAULT"),
-          e("span",{style:{fontSize:10,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace",marginLeft:8}},"v4.7"),
+          e("span",{style:{fontSize:10,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace",marginLeft:8}},"v4.8"),
           e("span",{style:{marginLeft:12,fontSize:11,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace"}},"PERSONAL WEALTH OS")
         ),
         e("div",{style:{display:"flex",gap:2,background:"rgba(255,255,255,0.03)",borderRadius:10,padding:4,border:"1px solid rgba(255,255,255,0.06)"}},
-          TABS.map(function(t){return e("button",{key:t,style:ns(tab===t),onClick:function(){setTab(t);}},t==="import"?"⬆ Import":t==="briefing"?"✦ Briefing":t==="recurring"?"🔁 Recurring":t.charAt(0).toUpperCase()+t.slice(1));})
+          TABS.map(function(t){return e("button",{key:t,style:ns(tab===t),onClick:function(){setTab(t);}},t==="import"?"⬆ Import":t==="briefing"?"✦ Briefing":t==="recurring"?"🔁 Recurring":t==="tracker"?"📡 Tracker":t.charAt(0).toUpperCase()+t.slice(1));})
         ),
         e("div",{style:{display:"flex",alignItems:"center",gap:12}},
           e("span",{style:{fontSize:12,color:C.textDim,fontFamily:"'JetBrains Mono',monospace"}},tx.length+" records ",e("span",{style:{color:C.teal}},"● saved")),
@@ -1437,6 +1470,82 @@ function App(){
             e("span",{style:{color:C.gold,fontWeight:700,fontFamily:"'JetBrains Mono',monospace"}},"$"+recurring.reduce(function(s,r){return s+(r.amount||0);},0).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2}))
           )
         )
+      ),
+      // TRACKER
+      tab==="tracker"&&e("div",null,
+        e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}},
+          e("div",null,
+            e("div",{style:{fontSize:22,fontWeight:700,color:C.gold,fontFamily:"'Playfair Display',serif",marginBottom:4}},"📡 Portfolio Catalyst Tracker"),
+            e("div",{style:{fontSize:12,color:C.textMuted}},"Last updated: "+tracker.updated)
+          ),
+          e("a",{
+            href:(function(){
+              var snap=holdings.slice(0,15).map(function(h){var g=h.cost>0?((h.currentValue-h.cost)/h.cost*100).toFixed(1):"0";return h.symbol+"(val:$"+( h.currentValue||h.value).toFixed(0)+",P/L:"+g+"%)";}).join(", ");
+              var prompt="Today is "+new Date().toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric",year:"numeric"})+". My portfolio: "+snap+". Please give me a full portfolio catalyst tracker update: 1) For each position state the current thesis, conviction level (High/Medium/Low), recommended action (Add/Hold/Trim/Close/Watch), and urgency. 2) List top 5 priority actions ranked by urgency with rationale. 3) Current macro context in 2-3 sentences. Be direct and concise.";
+              return "https://claude.ai/new?q="+encodeURIComponent(prompt);
+            })(),
+            target:"_blank",
+            style:{padding:"9px 18px",background:"linear-gradient(135deg,"+C.gold+","+C.goldDim+")",borderRadius:8,color:"#07080A",fontWeight:700,fontSize:12,textDecoration:"none",letterSpacing:0.5,whiteSpace:"nowrap"}
+          },"✦ Refresh in Claude.ai →")
+        ),
+
+        e(Card,{style:{marginBottom:20,background:"rgba(255,193,80,0.04)",borderColor:"rgba(255,193,80,0.2)"}},
+          e("div",{style:{fontSize:10,letterSpacing:2,color:C.textMuted,textTransform:"uppercase",fontFamily:"'JetBrains Mono',monospace",marginBottom:8}},"Macro Context"),
+          e("div",{style:{fontSize:13,color:C.text,lineHeight:1.7}},tracker.macro)
+        ),
+
+        e("div",{style:{fontSize:11,color:C.textMuted,letterSpacing:2,textTransform:"uppercase",fontFamily:"'JetBrains Mono',monospace",marginBottom:12}},"Position Scorecard"),
+        e("div",{style:{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12,marginBottom:24}},
+          tracker.positions.map(function(p,i){
+            var actionColors={Add:C.teal,Hold:C.gold,Trim:C.orange,Close:C.red,Watch:"#A78BFA"};
+            var urgencyBadge={now:{label:"Now",bg:"rgba(255,94,108,0.15)",color:C.red},soon:{label:"Soon",bg:"rgba(255,193,80,0.15)",color:C.gold},hold:{label:"Hold",bg:"rgba(62,207,178,0.12)",color:C.teal},watch:{label:"Watch",bg:"rgba(167,139,250,0.15)",color:"#A78BFA"}};
+            var ub=urgencyBadge[p.urgency]||urgencyBadge.watch;
+            var ac=actionColors[p.action]||C.textDim;
+            var liveP=prices[p.sym];
+            return e(Card,{key:i,style:{position:"relative",borderColor:ac+"33",padding:"14px 16px"}},
+              e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}},
+                e("div",null,
+                  e("div",{style:{fontSize:15,fontWeight:700,color:C.gold,fontFamily:"'JetBrains Mono',monospace"}},p.sym),
+                  e("div",{style:{fontSize:11,color:C.textMuted}},p.name)
+                ),
+                e("div",{style:{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4}},
+                  e("div",{style:{fontSize:11,fontWeight:700,padding:"2px 10px",borderRadius:20,background:ac+"22",color:ac}},p.action),
+                  e("div",{style:{fontSize:10,padding:"2px 8px",borderRadius:20,background:ub.bg,color:ub.color,fontFamily:"'JetBrains Mono',monospace"}},ub.label)
+                )
+              ),
+              liveP?e("div",{style:{display:"flex",gap:8,marginBottom:8}},
+                e("span",{style:{fontSize:12,color:C.text,fontFamily:"'JetBrains Mono',monospace"}},"$"+liveP.price.toFixed(2)),
+                e("span",{style:{fontSize:12,color:liveP.change>=0?C.teal:C.red,fontFamily:"'JetBrains Mono',monospace"}},(liveP.change>=0?"+":"")+liveP.change.toFixed(2)+"%")
+              ):null,
+              e("div",{style:{fontSize:11,color:C.textDim,lineHeight:1.6,marginBottom:6}},p.thesis),
+              e("div",{style:{fontSize:10,color:C.textMuted,lineHeight:1.5,paddingTop:6,borderTop:"1px solid rgba(255,255,255,0.05)"}},p.note),
+              e("div",{style:{marginTop:8,display:"flex",alignItems:"center",gap:6}},
+                e("span",{style:{fontSize:10,color:C.textMuted}},p.conviction+" conviction"),
+                e("div",{style:{flex:1,height:2,background:"rgba(255,255,255,0.06)",borderRadius:2}},
+                  e("div",{style:{width:p.conviction==="High"?"100%":p.conviction==="Medium"?"60%":"30%",height:"100%",background:p.conviction==="High"?C.teal:p.conviction==="Medium"?C.gold:C.red,borderRadius:2}})
+                )
+              )
+            );
+          })
+        ),
+
+        e("div",{style:{fontSize:11,color:C.textMuted,letterSpacing:2,textTransform:"uppercase",fontFamily:"'JetBrains Mono',monospace",marginBottom:12}},"Priority Actions"),
+        e(Card,null,
+          tracker.actions.map(function(a,i){
+            var urgencyBadge={now:{label:"Now",bg:"rgba(255,94,108,0.15)",color:C.red},soon:{label:"Soon",bg:"rgba(255,193,80,0.15)",color:C.gold},watch:{label:"Watch",bg:"rgba(167,139,250,0.15)",color:"#A78BFA"}};
+            var ub=urgencyBadge[a.urgency]||urgencyBadge.watch;
+            return e("div",{key:i,style:{display:"flex",alignItems:"flex-start",gap:16,padding:"12px 0",borderBottom:i<tracker.actions.length-1?"1px solid rgba(255,255,255,0.05)":"none"}},
+              e("div",{style:{width:24,height:24,borderRadius:"50%",background:"rgba(255,193,80,0.1)",border:"1px solid rgba(255,193,80,0.2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:C.gold,flexShrink:0}},a.rank),
+              e("div",{style:{flex:1}},
+                e("div",{style:{fontSize:13,fontWeight:600,color:C.text,marginBottom:3}},a.action),
+                e("div",{style:{fontSize:12,color:C.textMuted}},a.rationale)
+              ),
+              e("div",{style:{padding:"3px 10px",borderRadius:20,background:ub.bg,color:ub.color,fontSize:11,fontWeight:600,fontFamily:"'JetBrains Mono',monospace",flexShrink:0}},ub.label)
+            );
+          })
+        ),
+
+        e("div",{style:{marginTop:16,padding:"12px 16px",background:"rgba(255,255,255,0.02)",border:"1px solid "+C.border,borderRadius:8,fontSize:12,color:C.textMuted,lineHeight:1.7}},"💡 Click 'Refresh in Claude.ai' to get a fresh AI-generated tracker update with your current portfolio. Copy the output back here to update the tracker data (coming soon: auto-parse).")
       ),
       // IMPORT
       // BRIEFING

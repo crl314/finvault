@@ -544,7 +544,8 @@ function App(){
     ]
   };
   var [tracker,setTracker]=useState(function(){return load("fv_tracker")||DEFAULT_TRACKER;});
-  var [trackerTab,setTrackerTab]=useState("scorecard");
+  var [trackerTab,setTrackerTab]=useState("timeline");
+  var [openCards,setOpenCards]=useState({});
   var DEFAULT_EVENTS=[
     {id:"e1",date:"2026-04-23",sym:"AXTI",type:"earnings",title:"AXTI Q1 Earnings",note:"Watch for datacenter demand commentary"},
     {id:"e2",date:"2026-04-24",sym:"META",type:"earnings",title:"META Q1 Earnings",note:"AI capex guidance critical"},
@@ -803,7 +804,7 @@ function App(){
       e("div",{style:{maxWidth:1400,margin:"0 auto",display:"flex",alignItems:"center",justifyContent:"space-between",height:64}},
         e("div",null,
           e("span",{style:{fontFamily:"'Playfair Display',serif",fontSize:20,color:C.gold}},"◈ FINVAULT"),
-          e("span",{style:{fontSize:10,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace",marginLeft:8}},"v5.0"),
+          e("span",{style:{fontSize:10,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace",marginLeft:8}},"v5.1"),
           e("span",{style:{marginLeft:12,fontSize:11,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace"}},"PERSONAL WEALTH OS")
         ),
         e("div",{style:{display:"flex",gap:2,background:"rgba(255,255,255,0.03)",borderRadius:10,padding:4,border:"1px solid rgba(255,255,255,0.06)"}},
@@ -1490,201 +1491,146 @@ function App(){
       ),
       // TRACKER
       tab==="tracker"&&e("div",null,
-        // Header
-        e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}},
+        e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}},
           e("div",null,
-            e("div",{style:{fontSize:22,fontWeight:700,color:C.gold,fontFamily:"'Playfair Display',serif",marginBottom:4}},"📡 Portfolio Catalyst Tracker"),
-            e("div",{style:{fontSize:12,color:C.textMuted}},"Last updated: "+tracker.updated)
+            e("div",{style:{fontSize:20,fontWeight:700,color:C.text,marginBottom:2}},"Portfolio catalyst tracker"),
+            e("div",{style:{fontSize:12,color:C.textMuted}},"April 2026 — earnings · catalysts · headwinds")
           ),
-          e("a",{
-            href:(function(){
-              var snap=holdings.slice(0,15).map(function(h){var g=h.cost>0?((h.currentValue-h.cost)/h.cost*100).toFixed(1):"0";return h.symbol+"(val:"+(h.currentValue||h.value).toFixed(0)+",P/L:"+g+"%)";}).join(", ");
-              var prompt="Today is "+new Date().toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric",year:"numeric"})+". My portfolio: "+snap+". Give me a full portfolio catalyst tracker: 1) Each position: thesis, conviction (High/Medium/Low), action (Add/Hold/Trim/Close/Watch), urgency, note. 2) Top 5 priority actions ranked by urgency. 3) Macro context 2-3 sentences. Be direct.";
-              return "https://claude.ai/new?q="+encodeURIComponent(prompt);
-            })(),
-            target:"_blank",
-            style:{padding:"9px 18px",background:"linear-gradient(135deg,"+C.gold+","+C.goldDim+")",borderRadius:8,color:"#07080A",fontWeight:700,fontSize:12,textDecoration:"none",letterSpacing:0.5,whiteSpace:"nowrap"}
-          },"✦ Refresh in Claude.ai →")
+          e("a",{href:(function(){var snap=holdings.slice(0,15).map(function(h){var g=h.cost>0?((h.currentValue-h.cost)/h.cost*100).toFixed(1):"0";return h.symbol+"(P/L:"+g+"%)";}).join(", ");var prompt="Today is "+new Date().toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric",year:"numeric"})+". My portfolio: "+snap+". Give me a catalyst tracker update: for each position give thesis, key upcoming catalysts, headwinds, and next earnings date. Also give top 5 priority actions.";return "https://claude.ai/new?q="+encodeURIComponent(prompt);})(),target:"_blank",style:{padding:"7px 14px",background:"linear-gradient(135deg,"+C.gold+","+C.goldDim+")",borderRadius:7,color:"#07080A",fontWeight:700,fontSize:11,textDecoration:"none",whiteSpace:"nowrap"}},"✦ Refresh in Claude.ai →")
         ),
 
-        // Sub-tabs
-        e("div",{style:{display:"flex",gap:4,marginBottom:20,background:"rgba(255,255,255,0.03)",borderRadius:10,padding:4,width:"fit-content"}},
-          ["scorecard","timeline","macro","notes"].map(function(st){
-            var labels={scorecard:"📊 Scorecard",timeline:"📅 Earnings & Catalysts",macro:"🌍 Macro Events",notes:"📝 Notes"};
+        e("div",{style:{display:"flex",gap:0,border:"1px solid "+C.border,borderRadius:8,overflow:"hidden",marginBottom:18,width:"fit-content"}},
+          ["timeline","holdings","macro","notes"].map(function(st){
+            var labels={timeline:"Timeline",holdings:"Holdings",macro:"Macro events",notes:"Notes"};
             var active=trackerTab===st;
-            return e("button",{key:st,onClick:function(){setTrackerTab(st);},style:{padding:"7px 16px",borderRadius:7,border:"none",cursor:"pointer",fontSize:12,fontWeight:active?700:400,background:active?C.goldGlow:"transparent",color:active?C.gold:C.textMuted,transition:"all 0.15s"}},labels[st]);
+            return e("button",{key:st,onClick:function(){setTrackerTab(st);},style:{fontSize:12,fontWeight:500,padding:"7px 16px",cursor:"pointer",background:active?"rgba(255,193,80,0.12)":"rgba(255,255,255,0.03)",color:active?C.gold:C.textMuted,border:"none",borderRight:st!=="notes"?"1px solid "+C.border:"none",transition:"all 0.15s"}},labels[st]);
           })
-        ),
-
-        // SCORECARD TAB
-        trackerTab==="scorecard"&&e("div",null,
-          e(Card,{style:{marginBottom:16,background:"rgba(255,193,80,0.04)",borderColor:"rgba(255,193,80,0.2)"}},
-            e("div",{style:{fontSize:10,letterSpacing:2,color:C.textMuted,textTransform:"uppercase",fontFamily:"'JetBrains Mono',monospace",marginBottom:6}},"Macro Context"),
-            e("div",{style:{fontSize:13,color:C.text,lineHeight:1.7}},tracker.macro)
-          ),
-          e("div",{style:{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12,marginBottom:20}},
-            tracker.positions.map(function(p,i){
-              var actionColors={Add:C.teal,Hold:C.gold,Trim:C.orange,Close:C.red,Watch:"#A78BFA"};
-              var urgencyMap={now:{label:"Now",bg:"rgba(255,94,108,0.15)",color:C.red},soon:{label:"Soon",bg:"rgba(255,193,80,0.15)",color:C.gold},hold:{label:"Hold",bg:"rgba(62,207,178,0.12)",color:C.teal},watch:{label:"Watch",bg:"rgba(167,139,250,0.15)",color:"#A78BFA"}};
-              var ub=urgencyMap[p.urgency]||urgencyMap.watch;
-              var ac=actionColors[p.action]||C.textDim;
-              var liveP=prices[p.sym];
-              return e(Card,{key:i,style:{borderColor:ac+"33",padding:"14px 16px"}},
-                e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}},
-                  e("div",null,
-                    e("div",{style:{fontSize:15,fontWeight:700,color:C.gold,fontFamily:"'JetBrains Mono',monospace"}},p.sym),
-                    e("div",{style:{fontSize:11,color:C.textMuted}},p.name)
-                  ),
-                  e("div",{style:{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4}},
-                    e("div",{style:{fontSize:11,fontWeight:700,padding:"2px 10px",borderRadius:20,background:ac+"22",color:ac}},p.action),
-                    e("div",{style:{fontSize:10,padding:"2px 8px",borderRadius:20,background:ub.bg,color:ub.color,fontFamily:"'JetBrains Mono',monospace"}},ub.label)
-                  )
-                ),
-                liveP?e("div",{style:{display:"flex",gap:8,marginBottom:8}},
-                  e("span",{style:{fontSize:12,color:C.text,fontFamily:"'JetBrains Mono',monospace"}},"$"+liveP.price.toFixed(2)),
-                  e("span",{style:{fontSize:12,color:liveP.change>=0?C.teal:C.red,fontFamily:"'JetBrains Mono',monospace"}},(liveP.change>=0?"+":"")+liveP.change.toFixed(2)+"%")
-                ):null,
-                e("div",{style:{fontSize:11,color:C.textDim,lineHeight:1.6,marginBottom:6}},p.thesis),
-                e("div",{style:{fontSize:10,color:C.textMuted,lineHeight:1.5,paddingTop:6,borderTop:"1px solid rgba(255,255,255,0.05)"}},p.note),
-                e("div",{style:{marginTop:8,display:"flex",alignItems:"center",gap:6}},
-                  e("span",{style:{fontSize:10,color:C.textMuted}},p.conviction+" conviction"),
-                  e("div",{style:{flex:1,height:2,background:"rgba(255,255,255,0.06)",borderRadius:2}},
-                    e("div",{style:{width:p.conviction==="High"?"100%":p.conviction==="Medium"?"60%":"30%",height:"100%",background:p.conviction==="High"?C.teal:p.conviction==="Medium"?C.gold:C.red,borderRadius:2}})
-                  )
-                )
-              );
-            })
-          ),
-          e("div",{style:{fontSize:11,color:C.textMuted,letterSpacing:2,textTransform:"uppercase",fontFamily:"'JetBrains Mono',monospace",marginBottom:12}},"Priority Actions"),
-          e(Card,null,
-            tracker.actions.map(function(a,i){
-              var urgencyMap={now:{label:"Now",bg:"rgba(255,94,108,0.15)",color:C.red},soon:{label:"Soon",bg:"rgba(255,193,80,0.15)",color:C.gold},watch:{label:"Watch",bg:"rgba(167,139,250,0.15)",color:"#A78BFA"}};
-              var ub=urgencyMap[a.urgency]||urgencyMap.watch;
-              return e("div",{key:i,style:{display:"flex",alignItems:"flex-start",gap:16,padding:"12px 0",borderBottom:i<tracker.actions.length-1?"1px solid rgba(255,255,255,0.05)":"none"}},
-                e("div",{style:{width:24,height:24,borderRadius:"50%",background:"rgba(255,193,80,0.1)",border:"1px solid rgba(255,193,80,0.2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:C.gold,flexShrink:0}},a.rank),
-                e("div",{style:{flex:1}},
-                  e("div",{style:{fontSize:13,fontWeight:600,color:C.text,marginBottom:3}},a.action),
-                  e("div",{style:{fontSize:12,color:C.textMuted}},a.rationale)
-                ),
-                e("div",{style:{padding:"3px 10px",borderRadius:20,background:ub.bg,color:ub.color,fontSize:11,fontWeight:600,fontFamily:"'JetBrains Mono',monospace",flexShrink:0}},ub.label)
-              );
-            })
-          )
         ),
 
         // TIMELINE TAB
         trackerTab==="timeline"&&e("div",null,
-          e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}},
-            e("div",{style:{fontSize:13,color:C.textMuted}},"Upcoming earnings & catalysts for your holdings"),
-            e("button",{onClick:function(){setShowEventForm(function(v){return !v;});},style:{padding:"7px 16px",background:"rgba(255,193,80,0.1)",border:"1px solid rgba(255,193,80,0.3)",borderRadius:7,color:C.gold,fontSize:12,cursor:"pointer"}},"+ Add Event")
-          ),
-          showEventForm&&e(Card,{style:{marginBottom:16}},
-            e("div",{style:{fontSize:13,fontWeight:700,color:C.gold,marginBottom:12}},"New Event"),
-            e("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}},
-              e("div",null,
-                e("div",{style:{fontSize:10,color:C.textMuted,marginBottom:4}},"DATE"),
-                e("input",{type:"date",value:newEvent.date,onChange:function(ev){setNewEvent(function(p){return Object.assign({},p,{date:ev.target.value});});},style:{width:"100%",background:"rgba(255,255,255,0.06)",border:"1px solid "+C.border,borderRadius:6,color:C.text,fontSize:13,padding:"7px 10px",boxSizing:"border-box"}})
+          e("div",{style:{fontSize:10,fontWeight:500,letterSpacing:"0.07em",textTransform:"uppercase",color:C.textMuted,marginBottom:10}},"Earnings & catalyst timeline — April → June 2026"),
+          e("div",{style:{background:"rgba(255,255,255,0.03)",border:"1px solid "+C.border,borderRadius:12,padding:"14px 16px",marginBottom:16,overflowX:"auto"}},
+            e("div",{style:{minWidth:520}},
+              e("div",{style:{display:"flex",borderBottom:"1px solid rgba(255,255,255,0.08)",marginBottom:10}},
+                ["April 2026","May 2026","June 2026"].map(function(m){return e("div",{key:m,style:{flex:1,fontSize:11,fontWeight:500,color:C.textMuted,paddingBottom:6,textAlign:"center",borderRight:"1px solid rgba(255,255,255,0.05)"}},m);})
               ),
-              e("div",null,
-                e("div",{style:{fontSize:10,color:C.textMuted,marginBottom:4}},"TICKER"),
-                e("input",{type:"text",placeholder:"e.g. NVDA",value:newEvent.sym,onChange:function(ev){setNewEvent(function(p){return Object.assign({},p,{sym:ev.target.value.toUpperCase()});});},style:{width:"100%",background:"rgba(255,255,255,0.06)",border:"1px solid "+C.border,borderRadius:6,color:C.text,fontSize:13,padding:"7px 10px",boxSizing:"border-box"}})
+              e("div",{style:{display:"flex",flexDirection:"column",gap:8}},
+                [
+                  {lbl:"AEHR",pos:"9%",type:"earnings",text:"Apr 7 · earnings"},
+                  {lbl:"BE CFO",pos:"17%",type:"catalyst",text:"Apr 13 · new CFO"},
+                  {lbl:"AXTI/LITE",pos:"20%",type:"risk",text:"Apr 14 · 232 report"},
+                  {lbl:"META",pos:"45%",type:"earnings",text:"Apr 29 · earnings"},
+                  {lbl:"PLTR",pos:"53%",type:"earnings",text:"May 4 · earnings"},
+                  {lbl:"NVDA",pos:"57%",type:"earnings",text:"May 20 · earnings"},
+                  {lbl:"MU",pos:"90%",type:"earnings",text:"Jun 24 · earnings"},
+                  {lbl:"232 v2",pos:"91%",type:"risk",text:"Jul 1 · datacenter"}
+                ].map(function(row){
+                  var dotColor={earnings:"#378ADD",catalyst:"#EF9F27",risk:"#E24B4A"}[row.type]||"#888";
+                  var bgColor={earnings:"rgba(55,138,221,0.15)",catalyst:"rgba(239,159,39,0.15)",risk:"rgba(226,75,74,0.15)"}[row.type]||"rgba(255,255,255,0.1)";
+                  return e("div",{key:row.lbl,style:{display:"flex",alignItems:"center",height:30}},
+                    e("div",{style:{fontSize:11,fontWeight:500,width:72,flexShrink:0,color:C.text}},row.lbl),
+                    e("div",{style:{flex:1,position:"relative",height:"100%"}},
+                      e("div",{style:{position:"absolute",left:row.pos,transform:"translateX(-50%)",display:"flex",flexDirection:"column",alignItems:"center",gap:2}},
+                        e("div",{style:{width:9,height:9,borderRadius:"50%",background:dotColor}}),
+                        e("div",{style:{fontSize:9,fontWeight:500,padding:"1px 5px",borderRadius:8,background:bgColor,color:dotColor,whiteSpace:"nowrap"}},row.text)
+                      )
+                    )
+                  );
+                })
+              ),
+              e("div",{style:{display:"flex",flexWrap:"wrap",gap:12,marginTop:10,paddingTop:10,borderTop:"1px solid rgba(255,255,255,0.06)"}},
+                [{color:"#378ADD",label:"Earnings"},{color:"#EF9F27",label:"Catalyst"},{color:"#E24B4A",label:"Risk event"},{color:"#1D9E75",label:"Opportunity"}].map(function(l){
+                  return e("div",{key:l.label,style:{display:"flex",alignItems:"center",gap:4,fontSize:10,color:C.textMuted}},
+                    e("div",{style:{width:7,height:7,borderRadius:"50%",background:l.color}}),l.label);
+                })
               )
-            ),
-            e("div",{style:{marginBottom:10}},
-              e("div",{style:{fontSize:10,color:C.textMuted,marginBottom:4}},"TITLE"),
-              e("input",{type:"text",placeholder:"e.g. NVDA Q1 Earnings",value:newEvent.title,onChange:function(ev){setNewEvent(function(p){return Object.assign({},p,{title:ev.target.value});});},style:{width:"100%",background:"rgba(255,255,255,0.06)",border:"1px solid "+C.border,borderRadius:6,color:C.text,fontSize:13,padding:"7px 10px",boxSizing:"border-box"}})
-            ),
-            e("div",{style:{display:"flex",gap:8,marginBottom:12}},
-              ["earnings","catalyst","macro","other"].map(function(t){
-                return e("button",{key:t,onClick:function(){setNewEvent(function(p){return Object.assign({},p,{type:t});});},style:{padding:"5px 12px",borderRadius:20,border:"none",cursor:"pointer",fontSize:11,background:newEvent.type===t?"rgba(255,193,80,0.2)":"rgba(255,255,255,0.05)",color:newEvent.type===t?C.gold:C.textMuted}},t);
-              })
-            ),
-            e("div",{style:{marginBottom:12}},
-              e("div",{style:{fontSize:10,color:C.textMuted,marginBottom:4}},"NOTE"),
-              e("input",{type:"text",placeholder:"What to watch for...",value:newEvent.note,onChange:function(ev){setNewEvent(function(p){return Object.assign({},p,{note:ev.target.value});});},style:{width:"100%",background:"rgba(255,255,255,0.06)",border:"1px solid "+C.border,borderRadius:6,color:C.text,fontSize:13,padding:"7px 10px",boxSizing:"border-box"}})
-            ),
-            e("div",{style:{display:"flex",gap:8}},
-              e("button",{onClick:function(){
-                if(!newEvent.date||!newEvent.title)return;
-                saveEvents(events.concat([Object.assign({},newEvent,{id:"ev"+Date.now()})]));
-                setNewEvent({date:"",sym:"",type:"earnings",title:"",note:""});
-                setShowEventForm(false);
-              },style:{flex:1,padding:"9px",background:"linear-gradient(135deg,"+C.gold+","+C.goldDim+")",border:"none",borderRadius:7,color:"#07080A",fontWeight:700,fontSize:12}},"SAVE"),
-              e("button",{onClick:function(){setShowEventForm(false);},style:{padding:"9px 16px",background:"rgba(255,255,255,0.06)",border:"1px solid "+C.border,borderRadius:7,color:C.textMuted,fontSize:12}},"Cancel")
             )
-          ),
-          e("div",{style:{position:"relative",paddingLeft:24}},
-            e("div",{style:{position:"absolute",left:8,top:0,bottom:0,width:1,background:"rgba(255,193,80,0.15)"}}),
-            events.slice().sort(function(a,b){return a.date.localeCompare(b.date);}).map(function(ev,i){
-              var typeColors={earnings:C.gold,catalyst:C.teal,macro:"#A78BFA",other:C.textMuted};
-              var tc=typeColors[ev.type]||C.textMuted;
-              var isPast=ev.date<new Date().toISOString().slice(0,10);
-              var daysUntil=Math.round((new Date(ev.date)-new Date())/(1000*60*60*24));
-              var liveP=prices[ev.sym];
-              return e("div",{key:ev.id,style:{position:"relative",marginBottom:16,opacity:isPast?0.4:1}},
-                e("div",{style:{position:"absolute",left:-20,top:6,width:10,height:10,borderRadius:"50%",background:tc,border:"2px solid "+C.bg}}),
-                e(Card,{style:{borderColor:tc+"33",padding:"12px 16px"}},
-                  e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}},
-                    e("div",null,
-                      e("div",{style:{display:"flex",alignItems:"center",gap:8,marginBottom:4}},
-                        e("span",{style:{fontSize:12,fontWeight:700,color:tc,fontFamily:"'JetBrains Mono',monospace"}},ev.sym||"—"),
-                        e("span",{style:{fontSize:10,padding:"2px 8px",borderRadius:20,background:tc+"22",color:tc}},ev.type),
-                        !isPast&&daysUntil<=7?e("span",{style:{fontSize:10,padding:"2px 8px",borderRadius:20,background:"rgba(255,94,108,0.15)",color:C.red,fontWeight:700}},"in "+daysUntil+"d"):null
-                      ),
-                      e("div",{style:{fontSize:14,fontWeight:600,color:C.text,marginBottom:4}},ev.title),
-                      ev.note?e("div",{style:{fontSize:12,color:C.textMuted}},ev.note):null,
-                      liveP?e("div",{style:{fontSize:11,color:C.textDim,marginTop:4,fontFamily:"'JetBrains Mono',monospace"}},"$"+liveP.price.toFixed(2)+" · "+(liveP.change>=0?"+":"")+liveP.change.toFixed(2)+"% today"):null
+          )
+        ),
+
+        // HOLDINGS TAB
+        trackerTab==="holdings"&&e("div",null,
+          e("div",{style:{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))",gap:10,marginBottom:20}},
+            (function(){
+              var H=[
+                {t:"AXTI",th:"Optics / Photonics",c:["InP backlog $60M+","LITE/CIEN demand pull","Iran ceasefire rally"],h:["Apr 14 · 232 report","Insider selling $28M","Loss-making still"],e:"TBC May",k:"Apr 14 Section 232"},
+                {t:"LITE",th:"Optics / Photonics",c:["NVDA $2B investment","S&P 500 inclusion","Q3 guide $780-830M"],h:["Apr 14 · 232 risk","Jensen copper cable comments","CPO disruption narrative"],e:"TBC May",k:"232 report + Q3 guide"},
+                {t:"AEHR",th:"Optics / Photonics",c:["Silicon photonics win","$14M AI processor order","Small cap upside"],h:["Lumpy revenue","$60-80M forecast critical","Tiny $50M TTM"],e:"TBC May",k:"H2 booking $60-80M?"},
+                {t:"NVDA",th:"AI Core / Infra",c:["Blackwell ramp ongoing","LITE $2B validates AI optics","Datacenter capex intact"],h:["Section 232 (H200 named)","Export control tightening","Anti-HALO in stagflation"],e:"May 20",k:"Blackwell demand update"},
+                {t:"PLTR",th:"AI Core / Infra",c:["US gov defense AI expansion","AIP commercial 137%","FY2026 guide +61%"],h:["234x PE valuation rich","DOGE budget risk","Int'l adoption slow"],e:"May 4",k:"US gov contract updates"},
+                {t:"MU",th:"AI Core / Infra",c:["HBM4 sampling","Q2 beat EPS","30% dividend hike"],h:["Section 232 (DRAM)","Supply constrained","Cyclical risk"],e:"Jun 24",k:"Memory pricing cycle"},
+                {t:"META",th:"AI Ads / Social",c:["Llama AI ad targeting","3B+ user moat","Apr 29 earnings catalyst"],h:["Tariff ad spend pullback","Macro consumer slowdown","Antitrust EU/US"],e:"Apr 29",k:"Ad revenue Q2 guide"},
+                {t:"HOOD",th:"Fintech",c:["SpaceX Ventures exposure","$1.5B buyback live","Kalshi prediction markets"],h:["-39% deep in hole","Retail trading slowdown","E*Trade leads SpaceX retail"],e:"TBC May",k:"SpaceX allocation decision"},
+                {t:"AGRO",th:"Iran / Commodities",c:["Food inflation hedge","Iran disruption commodities","Tether equity stake"],h:["Ceasefire risk reduces bid","LatAm political risk"],e:"TBC May",k:"Iran ceasefire news"},
+                {t:"VG",th:"Iran / Commodities",c:["LNG premium on Hormuz","Europe energy dependency","Qatar supply disruption"],h:["Ceasefire compresses spread","Contract dispute overhang"],e:"TBC May",k:"WTI price + Iran"},
+                {t:"BE",th:"AI Energy / Alt Power",c:["FY2026 guide +55%","New CFO Apr 13","AI datacenter power demand"],h:["Jefferies PT $97","Oracle/OpenAI TX cancel","11.5% short interest"],e:"TBC May",k:"New CFO Simon Edwards"},
+                {t:"NET",th:"Agentic AI",c:["AI agent traffic 2x Jan","330-city network moat","$2.79B guide +29%"],h:["~25x revenue premium","Nov 2025 outage trust","SpaceX IPO selling"],e:"TBC May",k:"Entry $115-120 dip"},
+                {t:"FSLY",th:"Agentic AI",c:["AI Accelerator product","RPO +55% YoY","Citrini thesis name"],h:["Weak moat vs Cloudflare","Post-run valuation","SpaceX IPO selling risk"],e:"TBC May",k:"Consider trim before IPO"},
+                {t:"GLD",th:"Metals hedge",c:["Stagflation macro bid","Iran safe haven","HALO score 10/10"],h:["Ceasefire = metals selloff","Dollar reversal risk"],e:"N/A",k:"Hold — HALO perfect score"},
+                {t:"SIVR",th:"Metals hedge",c:["Solar demand structural","Industrial use moat"],h:["-20% lagging","Ceasefire = selloff","More volatile than GLD"],e:"N/A",k:"Review position size"},
+                {t:"IGV",th:"Hedge / Short",c:["AI disrupts SaaS seats","Risk-off macro bid","1x no decay"],h:["Squeeze risk if tech rallies","SaaS beats surprise"],e:"N/A",k:"Core hedge — hold"},
+                {t:"SARK",th:"Hedge / Short",c:["ARKK speculative exposure","Risk-off macro","Iran thesis complement"],h:["2x decay since Jul 2024","ARKK surprise rally risk"],e:"N/A",k:"Monitor decay closely"}
+              ];
+              return H.map(function(h,i){
+                var holding=holdings.find(function(hh){return hh.symbol===h.t;});
+                var pl=holding&&holding.cost>0?((holding.currentValue-holding.cost)/holding.cost*100):null;
+                var plStr=pl===null?"New":(pl>=0?"+":"")+pl.toFixed(1)+"%";
+                var plColor=pl===null?"#888":pl>=0?C.teal:C.red;
+                var topColor=pl===null?"#378ADD":pl>=10?"#1D9E75":pl>0?"#639922":pl>-15?"#EF9F27":"#E24B4A";
+                var liveP=prices[h.t];
+                var open=!!openCards[h.t];
+                return e("div",{key:i,onClick:function(){setOpenCards(function(prev){var n=Object.assign({},prev);n[h.t]=!n[h.t];return n;});},style:{background:"rgba(255,255,255,0.02)",border:"1px solid "+C.border,borderTop:"2px solid "+topColor,borderRadius:12,padding:"12px 14px",cursor:"pointer",transition:"border-color 0.15s"}},
+                  e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:5}},
+                    e("div",{style:{fontSize:14,fontWeight:500,color:C.text}},h.t),
+                    e("div",{style:{fontSize:12,fontWeight:500,color:plColor}},plStr)
+                  ),
+                  e("div",{style:{fontSize:10,color:C.textMuted,marginBottom:6}},h.th),
+                  liveP?e("div",{style:{fontSize:10,color:C.textDim,marginBottom:6,fontFamily:"'JetBrains Mono',monospace"}},"$"+liveP.price.toFixed(2)+" · "+(liveP.change>=0?"+":"")+liveP.change.toFixed(2)+"% today"):null,
+                  e("div",{style:{fontSize:9,fontWeight:500,textTransform:"uppercase",letterSpacing:"0.05em",color:C.textMuted,marginBottom:3}},"Catalysts"),
+                  e("div",{style:{display:"flex",flexWrap:"wrap",gap:3,marginBottom:4}},
+                    h.c.slice(0,2).map(function(cat,j){return e("span",{key:j,style:{fontSize:9,fontWeight:500,padding:"1px 6px",borderRadius:8,background:"rgba(29,158,117,0.15)",color:"#1D9E75"}},cat);})
+                  ),
+                  e("div",{style:{fontSize:9,fontWeight:500,textTransform:"uppercase",letterSpacing:"0.05em",color:C.textMuted,marginBottom:3,marginTop:4}},"Headwinds"),
+                  e("div",{style:{display:"flex",flexWrap:"wrap",gap:3,marginBottom:4}},
+                    h.h.slice(0,2).map(function(hw,j){return e("span",{key:j,style:{fontSize:9,fontWeight:500,padding:"1px 6px",borderRadius:8,background:"rgba(226,75,74,0.15)",color:"#E24B4A"}},hw);})
+                  ),
+                  open&&e("div",{style:{marginTop:8,paddingTop:8,borderTop:"1px solid rgba(255,255,255,0.06)"}},
+                    e("div",{style:{display:"flex",justifyContent:"space-between",fontSize:10,padding:"3px 0",borderBottom:"1px solid rgba(255,255,255,0.04)"}},
+                      e("span",{style:{color:C.textMuted}},"Next earnings"),
+                      e("span",{style:{fontWeight:500,color:C.text}},h.e)
                     ),
-                    e("div",{style:{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:6}},
-                      e("div",{style:{fontSize:12,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace"}},new Date(ev.date+"T12:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric"})),
-                      e("button",{onClick:function(){saveEvents(events.filter(function(x){return x.id!==ev.id;}));},style:{background:"rgba(255,94,108,0.1)",border:"none",borderRadius:6,color:C.red,padding:"3px 8px",fontSize:11,cursor:"pointer"}},"✕")
+                    e("div",{style:{display:"flex",justifyContent:"space-between",fontSize:10,padding:"3px 0"}},
+                      e("span",{style:{color:C.textMuted}},"Key watch"),
+                      e("span",{style:{fontWeight:500,color:C.text}},h.k)
                     )
                   )
-                )
-              );
-            })
+                );
+              });
+            })()
           )
         ),
 
         // MACRO EVENTS TAB
         trackerTab==="macro"&&e("div",null,
-          e("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:20}},
+          e("div",{style:{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(195px,1fr))",gap:8}},
             [
-              {icon:"🛢️",title:"Iran War",color:"#FF6B35",items:["Strait of Hormuz disruption risk","Oil ~$88/bbl (peaked ~$104)","LNG Qatar supply disruption","US-Israel-Iran tensions ongoing","Ceasefire watch = peace scare risk"]},
-              {icon:"📋",title:"Tariff Shock",color:C.red,items:["Liberation Day tariffs (Apr 2, 2026)","10-25% across most imports","China tariffs at 54%","Markets sold off -5% in 2 days","Stagflation risk elevated"]},
-              {icon:"🏛️",title:"Fed & Rates",color:"#A78BFA",items:["Fed on hold — no cuts expected","PCE inflation still elevated","Rate cut probability falling","Bond yields volatile","Dollar weakening vs EM currencies"]},
-              {icon:"🤖",title:"AI Infrastructure",color:C.teal,items:["Hyperscaler capex $400B+ in 2026","800G optical interconnect ramp","Agentic AI buildout accelerating","NVIDIA Blackwell demand strong","Power grid becoming the bottleneck"]}
-            ].map(function(sec,i){
-              return e(Card,{key:i,style:{borderColor:sec.color+"33"}},
-                e("div",{style:{display:"flex",alignItems:"center",gap:8,marginBottom:12}},
-                  e("span",{style:{fontSize:18}},sec.icon),
-                  e("div",{style:{fontSize:14,fontWeight:700,color:sec.color}},sec.title)
-                ),
-                sec.items.map(function(item,j){
-                  return e("div",{key:j,style:{display:"flex",gap:8,fontSize:12,color:C.textDim,marginBottom:6,lineHeight:1.5}},
-                    e("span",{style:{color:sec.color,flexShrink:0}},"▸"),
-                    e("span",null,item)
-                  );
-                })
-              );
-            })
-          ),
-          e(Card,{style:{background:"rgba(255,193,80,0.03)"}},
-            e("div",{style:{fontSize:11,color:C.textMuted,letterSpacing:2,textTransform:"uppercase",fontFamily:"'JetBrains Mono',monospace",marginBottom:12}},"Key Dates Ahead"),
-            [
-              {date:"Apr 16","event":"Fed Beige Book","impact":"high"},
-              {date:"Apr 23","event":"AXTI Earnings","impact":"medium"},
-              {date:"Apr 24","event":"META Earnings","impact":"high"},
-              {date:"Apr 25","event":"NVDA Earnings","impact":"high"},
-              {date:"Apr 30","event":"PCE Inflation + HOOD Earnings","impact":"high"},
-              {date:"May 1","event":"PLTR Earnings","impact":"medium"},
-              {date:"May 7","event":"FOMC Meeting","impact":"high"}
-            ].map(function(d,i){
-              var impactColor={high:C.red,medium:C.gold,low:C.teal};
-              return e("div",{key:i,style:{display:"flex",alignItems:"center",gap:12,padding:"8px 0",borderBottom:"1px solid rgba(255,255,255,0.04)"}},
-                e("div",{style:{fontSize:12,fontWeight:600,color:C.gold,fontFamily:"'JetBrains Mono',monospace",minWidth:50}},d.date),
-                e("div",{style:{flex:1,fontSize:12,color:C.text}},d.event),
-                e("div",{style:{fontSize:10,padding:"2px 8px",borderRadius:20,background:(impactColor[d.impact]||C.textMuted)+"22",color:impactColor[d.impact]||C.textMuted}},d.impact)
+              {date:"Apr 14",title:"Section 232 report",body:"AXTI + LITE directly named. Tariff scope on compound semiconductors. Could move entire optics book.",impact:"high",tag:"AI core + optics"},
+              {date:"Apr 29",title:"META earnings",body:"Ad revenue Q2 guide critical. Tariff-driven consumer slowdown = ad budget cuts. IV will spike pre-earnings.",impact:"high",tag:"META"},
+              {date:"May 4",title:"PLTR earnings",body:"US gov contract pipeline + AIP commercial metrics. 234x PE needs sustained growth beat.",impact:"medium",tag:"PLTR"},
+              {date:"May 6",title:"APO earnings",body:"ADS BDC redemption gate status. FRE vs +20% guide. Size up to $500-750 if stable.",impact:"medium",tag:"APO"},
+              {date:"May 20",title:"NVDA earnings",body:"Blackwell demand + export control update. Moves AXTI, LITE, CIEN, MU, AEHR same session.",impact:"high",tag:"AI core + optics"},
+              {date:"May",title:"SpaceX IPO window",body:"QQQ inclusion 15 days after listing. Sim 2: -5 to -12% dip = buy HALO names. 55.5% probability.",impact:"positive",tag:"QQQ, HOOD"},
+              {date:"Jun 24",title:"MU earnings",body:"Memory pricing cycle update. HBM4 sampling progress. Watch for AI demand commentary.",impact:"medium",tag:"MU"},
+              {date:"Jul 1",title:"232 datacenter review",body:"Second 232 review on datacenter chip scope. Could expand or narrow for NVDA, MU.",impact:"medium",tag:"AI core"}
+            ].map(function(ev,i){
+              var impactColor={high:"#E24B4A",medium:"#EF9F27",positive:"#1D9E75"}[ev.impact]||"#888";
+              var impactBg={high:"rgba(226,75,74,0.12)",medium:"rgba(239,159,39,0.12)",positive:"rgba(29,158,117,0.12)"}[ev.impact]||"rgba(255,255,255,0.06)";
+              return e("div",{key:i,style:{background:"rgba(255,255,255,0.02)",border:"1px solid "+C.border,borderRadius:8,padding:"10px 12px"}},
+                e("div",{style:{fontSize:10,fontWeight:500,color:C.textMuted,marginBottom:3}},ev.date),
+                e("div",{style:{fontSize:12,fontWeight:500,color:C.text,marginBottom:3}},ev.title),
+                e("div",{style:{fontSize:10,color:C.textMuted,lineHeight:1.4,marginBottom:6}},ev.body),
+                e("span",{style:{fontSize:9,fontWeight:500,padding:"2px 7px",borderRadius:8,background:impactBg,color:impactColor,display:"inline-block"}},ev.impact+" · "+ev.tag)
               );
             })
           )
@@ -1692,13 +1638,37 @@ function App(){
 
         // NOTES TAB
         trackerTab==="notes"&&e("div",null,
-          e("div",{style:{fontSize:13,color:C.textMuted,marginBottom:12}},"Freeform trading journal — ideas, thesis updates, reminders"),
-          e("textarea",{
-            value:trackerNotes,
-            onChange:function(ev){saveNotes(ev.target.value);},
-            style:{width:"100%",minHeight:400,background:"rgba(255,255,255,0.03)",border:"1px solid "+C.border,borderRadius:10,color:C.text,fontSize:13,padding:"16px",boxSizing:"border-box",resize:"vertical",lineHeight:1.8,fontFamily:"'JetBrains Mono',monospace",outline:"none"}
-          }),
-          e("div",{style:{fontSize:11,color:C.textMuted,marginTop:8}},"Auto-saved as you type")
+          e("div",{style:{fontSize:10,fontWeight:500,letterSpacing:"0.07em",textTransform:"uppercase",color:C.textMuted,marginBottom:10}},"Trade notes — saved locally in your browser"),
+          e("div",{id:"nlist-wrapper",style:{marginBottom:8}},
+            (function(){
+              var notes=[];
+              try{var r=localStorage.getItem("portfolio-notes");if(r)notes=JSON.parse(r);}catch(e){}
+              if(!notes.length)return e("div",{style:{fontSize:11,color:C.textMuted,marginBottom:12}},"No notes yet. Add your first trade note below.");
+              return notes.map(function(n,i){
+                return e("div",{key:i,style:{background:"rgba(255,255,255,0.03)",borderRadius:8,padding:"8px 10px",marginBottom:6,fontSize:11,color:C.textDim,lineHeight:1.5}},
+                  e("strong",{style:{fontWeight:500,color:C.text}},n.date),e("br"),n.text
+                );
+              });
+            })()
+          ),
+          e("textarea",{id:"tracker-note-input",placeholder:"Add a note... e.g. AEHR Apr 7: H2 booking $68M confirmed, thesis intact, sizing up.",style:{width:"100%",padding:"8px 10px",border:"1px solid "+C.border,borderRadius:8,fontSize:12,color:C.text,background:"rgba(255,255,255,0.04)",resize:"vertical",minHeight:80,fontFamily:"inherit",marginBottom:8,boxSizing:"border-box",outline:"none"}}),
+          e("div",{style:{fontSize:10,color:C.textMuted,marginBottom:6}},"Notes are saved in localStorage and persist across sessions."),
+          e("div",{style:{display:"flex",gap:8,marginBottom:12}},
+            e("button",{onClick:function(){
+              var inp=document.getElementById("tracker-note-input");
+              var val=inp?inp.value.trim():"";
+              if(!val)return;
+              var now=new Date().toLocaleString("en-US",{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"});
+              var notes=[];
+              try{var r=localStorage.getItem("portfolio-notes");if(r)notes=JSON.parse(r);}catch(e){}
+              notes.unshift({text:val,date:now});
+              localStorage.setItem("portfolio-notes",JSON.stringify(notes));
+              if(inp)inp.value="";
+              setTrackerTab("notes_refresh");
+              setTimeout(function(){setTrackerTab("notes");},10);
+            },style:{fontSize:12,padding:"6px 14px",border:"1px solid "+C.border,borderRadius:6,background:"rgba(255,193,80,0.1)",color:C.gold,cursor:"pointer"}},"Save note"),
+            e("button",{onClick:function(){var inp=document.getElementById("tracker-note-input");if(inp)inp.value="";},style:{fontSize:12,padding:"6px 14px",border:"1px solid "+C.border,borderRadius:6,background:"rgba(255,255,255,0.04)",color:C.textMuted,cursor:"pointer"}},"Clear")
+          )
         )
       ),
       // IMPORT

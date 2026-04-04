@@ -558,7 +558,6 @@ function App(){
   var isMonday=new Date().getDay()===1;
   var daysSinceUpdate=(function(){if(!trackerLastUpdated)return 999;try{var d=new Date(trackerLastUpdated);var diff=(new Date()-d)/(1000*60*60*24);return Math.floor(diff);}catch(e){return 999;}})();
   var showMondayBanner=isMonday&&daysSinceUpdate>=6;
-  var showStaleBanner=!isMonday&&daysSinceUpdate>=7;
   var DEFAULT_EVENTS=[
     {id:"e1",date:"2026-04-23",sym:"AXTI",type:"earnings",title:"AXTI Q1 Earnings",note:"Watch for datacenter demand commentary"},
     {id:"e2",date:"2026-04-24",sym:"META",type:"earnings",title:"META Q1 Earnings",note:"AI capex guidance critical"},
@@ -857,7 +856,7 @@ function App(){
       e("div",{style:{maxWidth:1400,margin:"0 auto",display:"flex",alignItems:"center",justifyContent:"space-between",height:64}},
         e("div",null,
           e("span",{style:{fontFamily:"'Playfair Display',serif",fontSize:20,color:C.gold}},"◈ FINVAULT"),
-          e("span",{style:{fontSize:10,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace",marginLeft:8}},"v5.5"),
+          e("span",{style:{fontSize:10,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace",marginLeft:8}},"v5.6"),
           e("span",{style:{marginLeft:12,fontSize:11,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace"}},"PERSONAL WEALTH OS")
         ),
         e("div",{style:{display:"flex",gap:2,background:"rgba(255,255,255,0.03)",borderRadius:10,padding:4,border:"1px solid rgba(255,255,255,0.06)"}},
@@ -1569,15 +1568,15 @@ function App(){
               )
             ),
 
-            (showMondayBanner||showStaleBanner)?e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 16px",background:showMondayBanner?"rgba(255,193,80,0.1)":"rgba(255,94,108,0.08)",border:"1px solid "+(showMondayBanner?"rgba(255,193,80,0.3)":"rgba(255,94,108,0.2)"),borderRadius:8,marginBottom:12}},
+            showMondayBanner?e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 16px",background:"rgba(255,193,80,0.1)",border:"1px solid rgba(255,193,80,0.3)",borderRadius:8,marginBottom:12}},
               e("div",{style:{display:"flex",alignItems:"center",gap:10}},
-                e("span",{style:{fontSize:16}},showMondayBanner?"📅":"⚠️"),
+                e("span",{style:{fontSize:16}},"📅"),
                 e("div",null,
-                  e("div",{style:{fontSize:13,fontWeight:600,color:showMondayBanner?C.gold:C.red}},showMondayBanner?"It's Monday — time to refresh your tracker":"Tracker is over a week old — refresh recommended"),
-                  e("div",{style:{fontSize:11,color:C.textMuted}},showMondayBanner?"Start your week with a fresh thesis + catalyst review":"Last updated "+daysSinceUpdate+" days ago")
+                  e("div",{style:{fontSize:13,fontWeight:600,color:C.gold}},"It's Monday — time to refresh your tracker"),
+                  e("div",{style:{fontSize:11,color:C.textMuted}},"Start your week with a fresh thesis + catalyst review")
                 )
               ),
-              e("button",{onClick:runTrackerRefresh,disabled:trackerRefreshing,style:{padding:"8px 16px",background:showMondayBanner?"linear-gradient(135deg,"+C.gold+","+C.goldDim+")":"rgba(255,94,108,0.15)",border:showMondayBanner?"none":"1px solid rgba(255,94,108,0.3)",borderRadius:7,color:showMondayBanner?"#07080A":C.red,fontWeight:700,fontSize:11,cursor:"pointer",whiteSpace:"nowrap"}},trackerRefreshing?"Refreshing...":showMondayBanner?"Start Monday Refresh →":"Refresh Now →")
+              e("button",{onClick:runTrackerRefresh,disabled:trackerRefreshing,style:{padding:"8px 16px",background:"linear-gradient(135deg,"+C.gold+","+C.goldDim+")",border:"none",borderRadius:7,color:"#07080A",fontWeight:700,fontSize:11,cursor:"pointer",whiteSpace:"nowrap"}},trackerRefreshing?"Refreshing...":"Start Monday Refresh →")
             ):null
           );
         })(),

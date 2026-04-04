@@ -544,7 +544,24 @@ function App(){
     ]
   };
   var [tracker,setTracker]=useState(function(){return load("fv_tracker")||DEFAULT_TRACKER;});
+  var [trackerTab,setTrackerTab]=useState("scorecard");
+  var DEFAULT_EVENTS=[
+    {id:"e1",date:"2026-04-23",sym:"AXTI",type:"earnings",title:"AXTI Q1 Earnings",note:"Watch for datacenter demand commentary"},
+    {id:"e2",date:"2026-04-24",sym:"META",type:"earnings",title:"META Q1 Earnings",note:"AI capex guidance critical"},
+    {id:"e3",date:"2026-04-25",sym:"NVDA",type:"earnings",title:"NVDA Q1 Earnings",note:"Blackwell demand & China export impact"},
+    {id:"e4",date:"2026-04-30",sym:"PLTR",type:"earnings",title:"PLTR Q1 Earnings",note:"Government contract pipeline key"},
+    {id:"e5",date:"2026-05-01",sym:"HOOD",type:"earnings",title:"HOOD Q1 Earnings",note:"Crypto revenue exposure"},
+    {id:"e6",date:"2026-04-16",sym:"MACRO",type:"macro",title:"Fed Beige Book",note:"Inflation signals will move bond yields"},
+    {id:"e7",date:"2026-04-30",sym:"MACRO",type:"macro",title:"PCE Inflation Data",note:"Key stagflation signal"},
+    {id:"e8",date:"2026-05-07",sym:"MACRO",type:"macro",title:"FOMC Meeting",note:"No cut expected. Hawkish tone = risk-off"}
+  ];
+  var [events,setEvents]=useState(function(){return load("fv_events")||DEFAULT_EVENTS;});
+  var [showEventForm,setShowEventForm]=useState(false);
+  var [newEvent,setNewEvent]=useState({date:"",sym:"",type:"earnings",title:"",note:""});
+  var [trackerNotes,setTrackerNotes]=useState(function(){return localStorage.getItem("fv_tracker_notes")||"Iran war active. Liberation Day tariffs shock markets. VIX elevated. Fed on hold.\n\nKey thesis: Long real assets (VG, AGRO, GLD). Short growth (IGV, SARK). Core AI (NVDA, PLTR, AXTI, LITE) held.\n\nWatching: HOOD reduction, META decision, NET/FSLY agentic trade build.";});
   function saveTracker(t){setTracker(t);localStorage.setItem("fv_tracker",JSON.stringify(t));}
+  function saveEvents(ev){setEvents(ev);localStorage.setItem("fv_events",JSON.stringify(ev));}
+  function saveNotes(n){setTrackerNotes(n);localStorage.setItem("fv_tracker_notes",n);}
 
   // ── Recurring Expenses ──
   var DEFAULT_RECURRING=[
@@ -786,7 +803,7 @@ function App(){
       e("div",{style:{maxWidth:1400,margin:"0 auto",display:"flex",alignItems:"center",justifyContent:"space-between",height:64}},
         e("div",null,
           e("span",{style:{fontFamily:"'Playfair Display',serif",fontSize:20,color:C.gold}},"◈ FINVAULT"),
-          e("span",{style:{fontSize:10,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace",marginLeft:8}},"v4.9"),
+          e("span",{style:{fontSize:10,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace",marginLeft:8}},"v5.0"),
           e("span",{style:{marginLeft:12,fontSize:11,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace"}},"PERSONAL WEALTH OS")
         ),
         e("div",{style:{display:"flex",gap:2,background:"rgba(255,255,255,0.03)",borderRadius:10,padding:4,border:"1px solid rgba(255,255,255,0.06)"}},

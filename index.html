@@ -12,7 +12,7 @@
     body{background:#070B14;color:#F0EAD6;font-family:'Outfit',sans-serif}
     ::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:#070B14}::-webkit-scrollbar-thumb{background:rgba(255,193,80,0.2);border-radius:3px}
     button{cursor:pointer;font-family:'Outfit',sans-serif}
-  </style>
+  @keyframes spin{to{transform:rotate(360deg)}}</style>
 </head>
 <body>
 <div id="root"></div>
@@ -547,6 +547,58 @@ function App(){
   var [trackerTab,setTrackerTab]=useState("timeline");
   var [openCards,setOpenCards]=useState({});
   var [trackerLastUpdated,setTrackerLastUpdated]=useState(function(){return localStorage.getItem("fv_tracker_updated")||null;});
+  var ANTHROPIC_KEY="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";
+  var [trackerRefreshing,setTrackerRefreshing]=useState(false);
+  var [trackerError,setTrackerError]=useState(null);
+  var [aiHoldings,setAiHoldings]=useState(function(){try{var r=localStorage.getItem("fv_ai_holdings");return r?JSON.parse(r):null;}catch(e){return null;}});
+  var [aiMacro,setAiMacro]=useState(function(){return localStorage.getItem("fv_ai_macro")||null;});
+  var [aiActions,setAiActions]=useState(function(){try{var r=localStorage.getItem("fv_ai_actions");return r?JSON.parse(r):null;}catch(e){return null;}});
+
+  var runTrackerRefresh=useCallback(async function(){
+    if(trackerRefreshing)return;
+    setTrackerRefreshing(true);setTrackerError(null);
+    try{
+      var snap=holdings.slice(0,20).map(function(h){
+        var g=h.cost>0?((h.currentValue-h.cost)/h.cost*100).toFixed(1):"0";
+        var lp=prices[h.symbol];
+        return h.symbol+"(val:$"+(h.currentValue||h.value).toFixed(0)+",P/L:"+g+"%"+(lp?",day:"+(lp.change>=0?"+":"")+lp.change.toFixed(1)+"%":"")+")";
+      }).join(", ");
+      var notes="";try{var r=localStorage.getItem("portfolio-notes");if(r){var ns=JSON.parse(r);notes=ns.slice(0,3).map(function(n){return n.date+": "+n.text;}).join(" | ");}}catch(e){}
+      var today=new Date().toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric",year:"numeric"});
+
+      var prompt="Today is "+today+". Portfolio: "+snap+". Recent notes: "+(notes||"none")+". Iran war ongoing, Liberation Day tariffs active, VIX elevated, Fed on hold. Return ONLY valid JSON, no markdown, no explanation: {macro: '2-3 sentence macro context', actions: [{rank:1, action:'text', rationale:'text', urgency:'now|soon|watch'}], holdings: [{t:'SYMBOL', th:'theme', c:['catalyst1','catalyst2'], h:['headwind1','headwind2'], e:'earnings date or TBC', k:'key watch item'}]}. Include all symbols: NVDA,AXTI,LITE,PLTR,META,HOOD,BE,MU,AGRO,VG,NET,FSLY,GLD,SIVR,IGV,SARK,AEHR. Exactly 5 actions. Use proper double-quote JSON in your response.";
+
+      var res=await fetch("https://api.anthropic.com/v1/messages",{
+        method:"POST",
+        headers:{"Content-Type":"application/json","x-api-key":ANTHROPIC_KEY,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
+        body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:2000,messages:[{role:"user",content:prompt}]})
+      });
+
+      if(!res.ok){var err=await res.text();throw new Error("API error "+res.status+": "+err);}
+      var data=await res.json();
+      var text=data.content&&data.content[0]?data.content[0].text:"";
+      var clean=text.replace(/```json|```/g,"").trim();
+      var parsed=JSON.parse(clean);
+
+      if(parsed.holdings){setAiHoldings(parsed.holdings);localStorage.setItem("fv_ai_holdings",JSON.stringify(parsed.holdings));}
+      if(parsed.macro){setAiMacro(parsed.macro);localStorage.setItem("fv_ai_macro",parsed.macro);}
+      if(parsed.actions){setAiActions(parsed.actions);localStorage.setItem("fv_ai_actions",JSON.stringify(parsed.actions));}
+
+      var now=new Date().toLocaleString("en-US",{weekday:"short",month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"});
+      setTrackerLastUpdated(now);localStorage.setItem("fv_tracker_updated",now);
+    }catch(e){setTrackerError(e.message||"Refresh failed");}
+    setTrackerRefreshing(false);
+  },[holdings,prices,trackerRefreshing]);
+
+  // Auto-refresh on Monday or if stale
+  useEffect(function(){
+    if(!holdings.length)return;
+    var shouldRefresh=(isMonday&&daysSinceUpdate>=6)||daysSinceUpdate>=7;
+    if(shouldRefresh&&!trackerRefreshing&&tab==="tracker"){
+      var t=setTimeout(runTrackerRefresh,1500);
+      return function(){clearTimeout(t);};
+    }
+  },[tab,holdings.length]);
   function markTrackerUpdated(){var now=new Date().toLocaleString("en-US",{weekday:"short",month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"});setTrackerLastUpdated(now);localStorage.setItem("fv_tracker_updated",now);}
   var isMonday=new Date().getDay()===1;
   var daysSinceUpdate=(function(){if(!trackerLastUpdated)return 999;var parts=trackerLastUpdated.split(", ");try{var d=new Date(trackerLastUpdated);var diff=(new Date()-d)/(1000*60*60*24);return Math.floor(diff);}catch(e){return 999;}})();
@@ -810,7 +862,7 @@ function App(){
       e("div",{style:{maxWidth:1400,margin:"0 auto",display:"flex",alignItems:"center",justifyContent:"space-between",height:64}},
         e("div",null,
           e("span",{style:{fontFamily:"'Playfair Display',serif",fontSize:20,color:C.gold}},"◈ FINVAULT"),
-          e("span",{style:{fontSize:10,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace",marginLeft:8}},"v5.2"),
+          e("span",{style:{fontSize:10,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace",marginLeft:8}},"v5.3"),
           e("span",{style:{marginLeft:12,fontSize:11,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace"}},"PERSONAL WEALTH OS")
         ),
         e("div",{style:{display:"flex",gap:2,background:"rgba(255,255,255,0.03)",borderRadius:10,padding:4,border:"1px solid rgba(255,255,255,0.06)"}},
@@ -1511,9 +1563,14 @@ function App(){
                   trackerLastUpdated?e("button",{onClick:markTrackerUpdated,style:{fontSize:10,padding:"2px 8px",background:"rgba(62,207,178,0.1)",border:"1px solid rgba(62,207,178,0.2)",borderRadius:20,color:C.teal,cursor:"pointer"}},"✓ Mark updated"):null
                 )
               ),
-              e("div",{style:{display:"flex",gap:8}},
-                e("a",{href:refreshUrl,target:"_blank",onClick:function(){setTimeout(markTrackerUpdated,1000);},style:{padding:"7px 14px",background:"rgba(255,255,255,0.06)",border:"1px solid "+C.border,borderRadius:7,color:C.textDim,fontSize:11,textDecoration:"none",whiteSpace:"nowrap"}},"↻ On-demand refresh"),
-                e("a",{href:refreshUrl,target:"_blank",onClick:function(){setTimeout(markTrackerUpdated,1000);},style:{padding:"7px 14px",background:"linear-gradient(135deg,"+C.gold+","+C.goldDim+")",borderRadius:7,color:"#07080A",fontWeight:700,fontSize:11,textDecoration:"none",whiteSpace:"nowrap"}},"✦ Weekly refresh →")
+              e("div",{style:{display:"flex",gap:8,alignItems:"center"}},
+                trackerRefreshing?e("div",{style:{fontSize:11,color:C.gold,fontFamily:"'JetBrains Mono',monospace",display:"flex",alignItems:"center",gap:6}},
+                  e("div",{style:{width:10,height:10,borderRadius:"50%",border:"2px solid "+C.gold,borderTopColor:"transparent",animation:"spin 0.8s linear infinite"}}),
+                  "Refreshing..."
+                ):null,
+                trackerError?e("div",{style:{fontSize:10,color:C.red,maxWidth:200}},trackerError):null,
+                e("button",{onClick:runTrackerRefresh,disabled:trackerRefreshing,style:{padding:"7px 14px",background:"rgba(255,255,255,0.06)",border:"1px solid "+C.border,borderRadius:7,color:trackerRefreshing?C.textMuted:C.textDim,fontSize:11,cursor:trackerRefreshing?"not-allowed":"pointer",whiteSpace:"nowrap"}},"↻ On-demand"),
+                e("button",{onClick:runTrackerRefresh,disabled:trackerRefreshing,style:{padding:"7px 14px",background:trackerRefreshing?"rgba(255,193,80,0.2)":"linear-gradient(135deg,"+C.gold+","+C.goldDim+")",borderRadius:7,color:trackerRefreshing?"#888":"#07080A",fontWeight:700,fontSize:11,cursor:trackerRefreshing?"not-allowed":"pointer",whiteSpace:"nowrap",border:"none"}},"✦ Weekly refresh")
               )
             ),
 
@@ -1525,7 +1582,7 @@ function App(){
                   e("div",{style:{fontSize:11,color:C.textMuted}},showMondayBanner?"Start your week with a fresh thesis + catalyst review":"Last updated "+daysSinceUpdate+" days ago")
                 )
               ),
-              e("a",{href:refreshUrl,target:"_blank",onClick:function(){setTimeout(markTrackerUpdated,1000);},style:{padding:"8px 16px",background:showMondayBanner?"linear-gradient(135deg,"+C.gold+","+C.goldDim+")":"rgba(255,94,108,0.15)",border:showMondayBanner?"none":"1px solid rgba(255,94,108,0.3)",borderRadius:7,color:showMondayBanner?"#07080A":C.red,fontWeight:700,fontSize:11,textDecoration:"none",whiteSpace:"nowrap"}},showMondayBanner?"Open Monday Refresh →":"Refresh Now →")
+              e("button",{onClick:runTrackerRefresh,disabled:trackerRefreshing,style:{padding:"8px 16px",background:showMondayBanner?"linear-gradient(135deg,"+C.gold+","+C.goldDim+")":"rgba(255,94,108,0.15)",border:showMondayBanner?"none":"1px solid rgba(255,94,108,0.3)",borderRadius:7,color:showMondayBanner?"#07080A":C.red,fontWeight:700,fontSize:11,cursor:"pointer",whiteSpace:"nowrap"}},trackerRefreshing?"Refreshing...":showMondayBanner?"Start Monday Refresh →":"Refresh Now →")
             ):null
           );
         })(),
@@ -1584,7 +1641,7 @@ function App(){
         trackerTab==="holdings"&&e("div",null,
           e("div",{style:{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))",gap:10,marginBottom:20}},
             (function(){
-              var H=[
+              var H=aiHoldings||[
                 {t:"AXTI",th:"Optics / Photonics",c:["InP backlog $60M+","LITE/CIEN demand pull","Iran ceasefire rally"],h:["Apr 14 · 232 report","Insider selling $28M","Loss-making still"],e:"TBC May",k:"Apr 14 Section 232"},
                 {t:"LITE",th:"Optics / Photonics",c:["NVDA $2B investment","S&P 500 inclusion","Q3 guide $780-830M"],h:["Apr 14 · 232 risk","Jensen copper cable comments","CPO disruption narrative"],e:"TBC May",k:"232 report + Q3 guide"},
                 {t:"AEHR",th:"Optics / Photonics",c:["Silicon photonics win","$14M AI processor order","Small cap upside"],h:["Lumpy revenue","$60-80M forecast critical","Tiny $50M TTM"],e:"TBC May",k:"H2 booking $60-80M?"},
@@ -1644,6 +1701,27 @@ function App(){
 
         // MACRO EVENTS TAB
         trackerTab==="macro"&&e("div",null,
+          (aiMacro||aiActions)?e("div",{style:{marginBottom:16}},
+            aiMacro?e(Card,{style:{marginBottom:12,background:"rgba(255,193,80,0.04)",borderColor:"rgba(255,193,80,0.2)"}},
+              e("div",{style:{fontSize:10,letterSpacing:2,color:C.textMuted,textTransform:"uppercase",fontFamily:"'JetBrains Mono',monospace",marginBottom:6}},"AI Macro Context · "+( trackerLastUpdated||"")),
+              e("div",{style:{fontSize:13,color:C.text,lineHeight:1.7}},aiMacro)
+            ):null,
+            aiActions?e(Card,{style:{marginBottom:12}},
+              e("div",{style:{fontSize:10,letterSpacing:2,color:C.textMuted,textTransform:"uppercase",fontFamily:"'JetBrains Mono',monospace",marginBottom:10}},"AI Priority Actions"),
+              aiActions.map(function(a,i){
+                var urgencyMap={now:{label:"Now",bg:"rgba(255,94,108,0.15)",color:C.red},soon:{label:"Soon",bg:"rgba(255,193,80,0.15)",color:C.gold},watch:{label:"Watch",bg:"rgba(167,139,250,0.15)",color:"#A78BFA"}};
+                var ub=urgencyMap[a.urgency]||urgencyMap.watch;
+                return e("div",{key:i,style:{display:"flex",alignItems:"flex-start",gap:14,padding:"10px 0",borderBottom:i<aiActions.length-1?"1px solid rgba(255,255,255,0.05)":"none"}},
+                  e("div",{style:{width:22,height:22,borderRadius:"50%",background:"rgba(255,193,80,0.1)",border:"1px solid rgba(255,193,80,0.2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:700,color:C.gold,flexShrink:0}},a.rank),
+                  e("div",{style:{flex:1}},
+                    e("div",{style:{fontSize:13,fontWeight:600,color:C.text,marginBottom:2}},a.action),
+                    e("div",{style:{fontSize:11,color:C.textMuted}},a.rationale)
+                  ),
+                  e("div",{style:{padding:"2px 10px",borderRadius:20,background:ub.bg,color:ub.color,fontSize:10,fontWeight:600,flexShrink:0}},ub.label)
+                );
+              })
+            ):null
+          ):null,
           e("div",{style:{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(195px,1fr))",gap:8}},
             [
               {date:"Apr 14",title:"Section 232 report",body:"AXTI + LITE directly named. Tariff scope on compound semiconductors. Could move entire optics book.",impact:"high",tag:"AI core + optics"},

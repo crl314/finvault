@@ -546,6 +546,12 @@ function App(){
   var [tracker,setTracker]=useState(function(){return load("fv_tracker")||DEFAULT_TRACKER;});
   var [trackerTab,setTrackerTab]=useState("timeline");
   var [openCards,setOpenCards]=useState({});
+  var [trackerLastUpdated,setTrackerLastUpdated]=useState(function(){return localStorage.getItem("fv_tracker_updated")||null;});
+  function markTrackerUpdated(){var now=new Date().toLocaleString("en-US",{weekday:"short",month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"});setTrackerLastUpdated(now);localStorage.setItem("fv_tracker_updated",now);}
+  var isMonday=new Date().getDay()===1;
+  var daysSinceUpdate=(function(){if(!trackerLastUpdated)return 999;var parts=trackerLastUpdated.split(", ");try{var d=new Date(trackerLastUpdated);var diff=(new Date()-d)/(1000*60*60*24);return Math.floor(diff);}catch(e){return 999;}})();
+  var showMondayBanner=isMonday&&daysSinceUpdate>=6;
+  var showStaleBanner=!isMonday&&daysSinceUpdate>=7;
   var DEFAULT_EVENTS=[
     {id:"e1",date:"2026-04-23",sym:"AXTI",type:"earnings",title:"AXTI Q1 Earnings",note:"Watch for datacenter demand commentary"},
     {id:"e2",date:"2026-04-24",sym:"META",type:"earnings",title:"META Q1 Earnings",note:"AI capex guidance critical"},
@@ -804,7 +810,7 @@ function App(){
       e("div",{style:{maxWidth:1400,margin:"0 auto",display:"flex",alignItems:"center",justifyContent:"space-between",height:64}},
         e("div",null,
           e("span",{style:{fontFamily:"'Playfair Display',serif",fontSize:20,color:C.gold}},"◈ FINVAULT"),
-          e("span",{style:{fontSize:10,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace",marginLeft:8}},"v5.1"),
+          e("span",{style:{fontSize:10,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace",marginLeft:8}},"v5.2"),
           e("span",{style:{marginLeft:12,fontSize:11,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace"}},"PERSONAL WEALTH OS")
         ),
         e("div",{style:{display:"flex",gap:2,background:"rgba(255,255,255,0.03)",borderRadius:10,padding:4,border:"1px solid rgba(255,255,255,0.06)"}},
@@ -1491,13 +1497,38 @@ function App(){
       ),
       // TRACKER
       tab==="tracker"&&e("div",null,
-        e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}},
-          e("div",null,
-            e("div",{style:{fontSize:20,fontWeight:700,color:C.text,marginBottom:2}},"Portfolio catalyst tracker"),
-            e("div",{style:{fontSize:12,color:C.textMuted}},"April 2026 — earnings · catalysts · headwinds")
-          ),
-          e("a",{href:(function(){var snap=holdings.slice(0,15).map(function(h){var g=h.cost>0?((h.currentValue-h.cost)/h.cost*100).toFixed(1):"0";return h.symbol+"(P/L:"+g+"%)";}).join(", ");var prompt="Today is "+new Date().toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric",year:"numeric"})+". My portfolio: "+snap+". Give me a catalyst tracker update: for each position give thesis, key upcoming catalysts, headwinds, and next earnings date. Also give top 5 priority actions.";return "https://claude.ai/new?q="+encodeURIComponent(prompt);})(),target:"_blank",style:{padding:"7px 14px",background:"linear-gradient(135deg,"+C.gold+","+C.goldDim+")",borderRadius:7,color:"#07080A",fontWeight:700,fontSize:11,textDecoration:"none",whiteSpace:"nowrap"}},"✦ Refresh in Claude.ai →")
-        ),
+        (function(){
+          var snap=holdings.slice(0,15).map(function(h){var g=h.cost>0?((h.currentValue-h.cost)/h.cost*100).toFixed(1):"0";return h.symbol+"(val:$"+(h.currentValue||h.value).toFixed(0)+",P/L:"+g+"%)";}).join(", ");
+          var notes="";try{var r=localStorage.getItem("portfolio-notes");if(r){var ns=JSON.parse(r);notes=ns.slice(0,3).map(function(n){return n.date+": "+n.text;}).join(" | ");}}catch(e){}
+          var prompt="Today is "+new Date().toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric",year:"numeric"})+". My portfolio: "+snap+". Recent notes: "+( notes||"none")+". Please give me a FULL weekly catalyst tracker update: 1) For each position: thesis status, top 2 catalysts, top 2 headwinds, next earnings date, key thing to watch. 2) Top 5 priority actions ranked by urgency with rationale. 3) Macro context 2-3 sentences. 4) Any positions to add/close based on current macro. Be direct and specific.";
+          var refreshUrl="https://claude.ai/new?q="+encodeURIComponent(prompt);
+          return e("div",null,
+            e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}},
+              e("div",null,
+                e("div",{style:{fontSize:20,fontWeight:700,color:C.text,marginBottom:2}},"Portfolio catalyst tracker"),
+                e("div",{style:{display:"flex",alignItems:"center",gap:10}},
+                  e("div",{style:{fontSize:11,color:C.textMuted}},trackerLastUpdated?"Last updated: "+trackerLastUpdated:"Never updated — refresh now"),
+                  trackerLastUpdated?e("button",{onClick:markTrackerUpdated,style:{fontSize:10,padding:"2px 8px",background:"rgba(62,207,178,0.1)",border:"1px solid rgba(62,207,178,0.2)",borderRadius:20,color:C.teal,cursor:"pointer"}},"✓ Mark updated"):null
+                )
+              ),
+              e("div",{style:{display:"flex",gap:8}},
+                e("a",{href:refreshUrl,target:"_blank",onClick:function(){setTimeout(markTrackerUpdated,1000);},style:{padding:"7px 14px",background:"rgba(255,255,255,0.06)",border:"1px solid "+C.border,borderRadius:7,color:C.textDim,fontSize:11,textDecoration:"none",whiteSpace:"nowrap"}},"↻ On-demand refresh"),
+                e("a",{href:refreshUrl,target:"_blank",onClick:function(){setTimeout(markTrackerUpdated,1000);},style:{padding:"7px 14px",background:"linear-gradient(135deg,"+C.gold+","+C.goldDim+")",borderRadius:7,color:"#07080A",fontWeight:700,fontSize:11,textDecoration:"none",whiteSpace:"nowrap"}},"✦ Weekly refresh →")
+              )
+            ),
+
+            (showMondayBanner||showStaleBanner)?e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 16px",background:showMondayBanner?"rgba(255,193,80,0.1)":"rgba(255,94,108,0.08)",border:"1px solid "+(showMondayBanner?"rgba(255,193,80,0.3)":"rgba(255,94,108,0.2)"),borderRadius:8,marginBottom:12}},
+              e("div",{style:{display:"flex",alignItems:"center",gap:10}},
+                e("span",{style:{fontSize:16}},showMondayBanner?"📅":"⚠️"),
+                e("div",null,
+                  e("div",{style:{fontSize:13,fontWeight:600,color:showMondayBanner?C.gold:C.red}},showMondayBanner?"It's Monday — time to refresh your tracker":"Tracker is over a week old — refresh recommended"),
+                  e("div",{style:{fontSize:11,color:C.textMuted}},showMondayBanner?"Start your week with a fresh thesis + catalyst review":"Last updated "+daysSinceUpdate+" days ago")
+                )
+              ),
+              e("a",{href:refreshUrl,target:"_blank",onClick:function(){setTimeout(markTrackerUpdated,1000);},style:{padding:"8px 16px",background:showMondayBanner?"linear-gradient(135deg,"+C.gold+","+C.goldDim+")":"rgba(255,94,108,0.15)",border:showMondayBanner?"none":"1px solid rgba(255,94,108,0.3)",borderRadius:7,color:showMondayBanner?"#07080A":C.red,fontWeight:700,fontSize:11,textDecoration:"none",whiteSpace:"nowrap"}},showMondayBanner?"Open Monday Refresh →":"Refresh Now →")
+            ):null
+          );
+        })(),
 
         e("div",{style:{display:"flex",gap:0,border:"1px solid "+C.border,borderRadius:8,overflow:"hidden",marginBottom:18,width:"fit-content"}},
           ["timeline","holdings","macro","notes"].map(function(st){

@@ -554,53 +554,9 @@ function App(){
   var [aiMacro,setAiMacro]=useState(function(){return localStorage.getItem("fv_ai_macro")||null;});
   var [aiActions,setAiActions]=useState(function(){try{var r=localStorage.getItem("fv_ai_actions");return r?JSON.parse(r):null;}catch(e){return null;}});
 
-  function runTrackerRefresh(){
-    if(trackerRefreshing)return;
-    setTrackerRefreshing(true);setTrackerError(null);
-    var snap=holdings.slice(0,20).map(function(h){
-      var g=h.cost>0?((h.currentValue-h.cost)/h.cost*100).toFixed(1):"0";
-      var lp=prices[h.symbol];
-      return h.symbol+"(val:$"+(h.currentValue||h.value).toFixed(0)+",P/L:"+g+"%"+(lp?",day:"+(lp.change>=0?"+":"")+lp.change.toFixed(1)+"%":"")+")";
-    }).join(", ");
-    var notes="";try{var r=localStorage.getItem("portfolio-notes");if(r){var ns=JSON.parse(r);notes=ns.slice(0,3).map(function(n){return n.date+": "+n.text;}).join(" | ");}}catch(e){}
-    var today=new Date().toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric",year:"numeric"});
-    var jsonTemplate='{"macro":"...","actions":[{"rank":1,"action":"...","rationale":"...","urgency":"now|soon|watch"}],"holdings":[{"t":"SYM","th":"theme","c":["cat1","cat2"],"h":["hw1","hw2"],"e":"date","k":"watch"}]}';
-    var prompt="Today is "+today+". Portfolio: "+snap+". Notes: "+(notes||"none")+". Context: Iran war ongoing, Liberation Day tariffs, VIX elevated, Fed on hold. Return ONLY valid JSON matching this structure (no markdown, no explanation): "+jsonTemplate+". Include all symbols: NVDA,AXTI,LITE,PLTR,META,HOOD,BE,MU,AGRO,VG,NET,FSLY,GLD,SIVR,IGV,SARK,AEHR. Exactly 5 actions. urgency must be now, soon, or watch.";
-    fetch("https://api.anthropic.com/v1/messages",{
-      method:"POST",
-      headers:{"Content-Type":"application/json","x-api-key":ANTHROPIC_KEY,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
-      body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:2000,messages:[{role:"user",content:prompt}]})
-    }).then(function(res){
-      if(!res.ok){return res.text().then(function(t){throw new Error("API "+res.status+": "+t.slice(0,100));});}
-      return res.json();
-    }).then(function(data){
-      var text=data.content&&data.content[0]?data.content[0].text:"";
-      var clean=text.replace(/```json|```/g,"").trim();
-      var parsed=JSON.parse(clean);
-      if(parsed.holdings){setAiHoldings(parsed.holdings);localStorage.setItem("fv_ai_holdings",JSON.stringify(parsed.holdings));}
-      if(parsed.macro){setAiMacro(parsed.macro);localStorage.setItem("fv_ai_macro",parsed.macro);}
-      if(parsed.actions){setAiActions(parsed.actions);localStorage.setItem("fv_ai_actions",JSON.stringify(parsed.actions));}
-      var now=new Date().toLocaleString("en-US",{weekday:"short",month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"});
-      setTrackerLastUpdated(now);localStorage.setItem("fv_tracker_updated",now);
-      setTrackerRefreshing(false);
-    }).catch(function(e){
-      setTrackerError(e.message||"Refresh failed");
-      setTrackerRefreshing(false);
-    });
-  }
-
-  // Auto-refresh on Monday or if stale, when tracker tab is open
-  useEffect(function(){
-    if(!holdings.length||tab!=="tracker")return;
-    var shouldRefresh=(isMonday&&daysSinceUpdate>=6)||daysSinceUpdate>=7;
-    if(shouldRefresh&&!trackerRefreshing){
-      var t=setTimeout(function(){runTrackerRefresh();},2000);
-      return function(){clearTimeout(t);};
-    }
-  },[tab,holdings.length,trackerLastUpdated]);
   function markTrackerUpdated(){var now=new Date().toLocaleString("en-US",{weekday:"short",month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"});setTrackerLastUpdated(now);localStorage.setItem("fv_tracker_updated",now);}
   var isMonday=new Date().getDay()===1;
-  var daysSinceUpdate=(function(){if(!trackerLastUpdated)return 999;var parts=trackerLastUpdated.split(", ");try{var d=new Date(trackerLastUpdated);var diff=(new Date()-d)/(1000*60*60*24);return Math.floor(diff);}catch(e){return 999;}})();
+  var daysSinceUpdate=(function(){if(!trackerLastUpdated)return 999;try{var d=new Date(trackerLastUpdated);var diff=(new Date()-d)/(1000*60*60*24);return Math.floor(diff);}catch(e){return 999;}})();
   var showMondayBanner=isMonday&&daysSinceUpdate>=6;
   var showStaleBanner=!isMonday&&daysSinceUpdate>=7;
   var DEFAULT_EVENTS=[
@@ -787,6 +743,46 @@ function App(){
   var holdings=Object.values(hMap).map(function(h){return Object.assign({},h,{value:Math.max(0,h.bought-h.sold),cost:h.bought});}).filter(function(h){return h.value>0;}).sort(function(a,b){return (b.currentValue||b.value)-(a.currentValue||a.value);});
   var totInv=holdings.reduce(function(s,h){return s+h.cost;},0);
 
+  function runTrackerRefresh(){
+    if(trackerRefreshing)return;
+    setTrackerRefreshing(true);setTrackerError(null);
+    var snap=holdings.slice(0,20).map(function(h){
+      var g=h.cost>0?((h.currentValue-h.cost)/h.cost*100).toFixed(1):"0";
+      var lp=prices[h.symbol];
+      return h.symbol+"(val:$"+(h.currentValue||h.value).toFixed(0)+",P/L:"+g+"%"+(lp?",day:"+(lp.change>=0?"+":"")+lp.change.toFixed(1)+"%":"")+")";
+    }).join(", ");
+    var notes="";try{var nr=localStorage.getItem("portfolio-notes");if(nr){var ns=JSON.parse(nr);notes=ns.slice(0,3).map(function(n){return n.date+": "+n.text;}).join(" | ");}}catch(e){}
+    var today=new Date().toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric",year:"numeric"});
+    var jt='{"macro":"...","actions":[{"rank":1,"action":"...","rationale":"...","urgency":"now"}],"holdings":[{"t":"SYM","th":"theme","c":["c1","c2"],"h":["h1","h2"],"e":"date","k":"watch"}]}';
+    var prompt="Today is "+today+". Portfolio: "+snap+". Notes: "+(notes||"none")+". Macro: Iran war ongoing, Liberation Day tariffs, VIX elevated, Fed on hold. Return ONLY valid JSON matching: "+jt+" Include symbols: NVDA,AXTI,LITE,PLTR,META,HOOD,BE,MU,AGRO,VG,NET,FSLY,GLD,SIVR,IGV,SARK,AEHR. Exactly 5 actions. urgency: now/soon/watch only.";
+    fetch("https://api.anthropic.com/v1/messages",{
+      method:"POST",
+      headers:{"Content-Type":"application/json","x-api-key":ANTHROPIC_KEY,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
+      body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:2000,messages:[{role:"user",content:prompt}]})
+    }).then(function(res){
+      if(!res.ok)return res.text().then(function(t){throw new Error("API "+res.status);});
+      return res.json();
+    }).then(function(data){
+      var text=data.content&&data.content[0]?data.content[0].text:"";
+      var clean=text.replace(/```json|```/g,"").trim();
+      var parsed=JSON.parse(clean);
+      if(parsed.holdings){setAiHoldings(parsed.holdings);localStorage.setItem("fv_ai_holdings",JSON.stringify(parsed.holdings));}
+      if(parsed.macro){setAiMacro(parsed.macro);localStorage.setItem("fv_ai_macro",parsed.macro);}
+      if(parsed.actions){setAiActions(parsed.actions);localStorage.setItem("fv_ai_actions",JSON.stringify(parsed.actions));}
+      var now=new Date().toLocaleString("en-US",{weekday:"short",month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"});
+      setTrackerLastUpdated(now);localStorage.setItem("fv_tracker_updated",now);
+      setTrackerRefreshing(false);
+    }).catch(function(e){setTrackerError(e.message||"Refresh failed");setTrackerRefreshing(false);});
+  }
+
+  useEffect(function(){
+    if(!holdings.length||tab!=="tracker")return;
+    if(((isMonday&&daysSinceUpdate>=6)||daysSinceUpdate>=7)&&!trackerRefreshing){
+      var t=setTimeout(runTrackerRefresh,2000);
+      return function(){clearTimeout(t);};
+    }
+  },[tab,holdings.length]);
+
   var expCat=Object.entries(fil.filter(function(t){return t.type==="expense";}).reduce(function(a,t){a[t.category]=(a[t.category]||0)+t.amount;return a;},{})).map(function(x){return{name:x[0],value:x[1]};}).sort(function(a,b){return b.value-a.value;});
 
   var byMo={};
@@ -861,7 +857,7 @@ function App(){
       e("div",{style:{maxWidth:1400,margin:"0 auto",display:"flex",alignItems:"center",justifyContent:"space-between",height:64}},
         e("div",null,
           e("span",{style:{fontFamily:"'Playfair Display',serif",fontSize:20,color:C.gold}},"◈ FINVAULT"),
-          e("span",{style:{fontSize:10,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace",marginLeft:8}},"v5.4"),
+          e("span",{style:{fontSize:10,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace",marginLeft:8}},"v5.5"),
           e("span",{style:{marginLeft:12,fontSize:11,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace"}},"PERSONAL WEALTH OS")
         ),
         e("div",{style:{display:"flex",gap:2,background:"rgba(255,255,255,0.03)",borderRadius:10,padding:4,border:"1px solid rgba(255,255,255,0.06)"}},

@@ -856,7 +856,7 @@ function App(){
       e("div",{style:{maxWidth:1400,margin:"0 auto",display:"flex",alignItems:"center",justifyContent:"space-between",height:64}},
         e("div",null,
           e("span",{style:{fontFamily:"'Playfair Display',serif",fontSize:20,color:C.gold}},"◈ FINVAULT"),
-          e("span",{style:{fontSize:10,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace",marginLeft:8}},"v5.6"),
+          e("span",{style:{fontSize:10,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace",marginLeft:8}},"v5.7"),
           e("span",{style:{marginLeft:12,fontSize:11,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace"}},"PERSONAL WEALTH OS")
         ),
         e("div",{style:{display:"flex",gap:2,background:"rgba(255,255,255,0.03)",borderRadius:10,padding:4,border:"1px solid rgba(255,255,255,0.06)"}},
@@ -1249,10 +1249,11 @@ function App(){
             // ── Portfolio Breakdown ──
             var BREAKDOWN=[
               {label:"Core AI",icon:"💼",color:C.gold,symbols:["NVDA","PLTR","META","BE","MU","HOOD"]},
-              {label:"Optics / Photonics",icon:"🔬",color:"#00CFFF",symbols:["AXTI","LITE","AEHR","CIEN"]},
+              {label:"Optics / Photonics",icon:"🔬",color:"#00CFFF",symbols:["AXTI","LITE","AEHR","CIEN","AAOI"]},
               {label:"Commodities",icon:"🌾",color:"#F4A261",symbols:["AGRO","VG"]},
               {label:"Metals & Hedges",icon:"🥇",color:"#C0C0C0",symbols:["GLD","SIVR","IGV","SARK"]},
               {label:"Agentic AI Infra",icon:"⚡",color:"#A78BFA",symbols:["FSLY","NET"]},
+              {label:"Space",icon:"🚀",color:"#E879F9",symbols:["BKSY","SPIR"]},
               {label:"Indexes",icon:"📈",color:C.purple,symbols:["SPY","QQQ","XLE"]}
             ];
             var totalPortVal=holdings.reduce(function(s,h){return s+(h.currentValue||h.value);},0);

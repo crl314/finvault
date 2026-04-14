@@ -683,8 +683,19 @@ function App(){
       .catch(function(){});
   },[]);
 
+  // Fetch BTC price on mount
+  useEffect(function(){
+    fetch("https://finnhub.io/api/v1/quote?symbol=BINANCE:BTCUSDT&token="+FINNHUB_KEY)
+      .then(function(r){return r.json();})
+      .then(function(d){if(d&&d.c&&d.c>0){setBtcPrice(d.c);localStorage.setItem("fv_btc_price",d.c);}})
+      .catch(function(){});
+  },[]);
+
   // Always fetch GOOG on mount for vested shares KPI
   var [priceError,setPriceError]=useState(false);
+  var BTC_HOLDINGS=0.2611;
+  var [btcPrice,setBtcPrice]=useState(function(){var s=localStorage.getItem("fv_btc_price");return s?parseFloat(s):null;});
+
   var [googManualPrice,setGoogManualPrice]=useState(function(){
     var saved=localStorage.getItem("fv_goog_price");
     return saved?parseFloat(saved):null;
@@ -856,7 +867,7 @@ function App(){
       e("div",{style:{maxWidth:1400,margin:"0 auto",display:"flex",alignItems:"center",justifyContent:"space-between",height:64}},
         e("div",null,
           e("span",{style:{fontFamily:"'Playfair Display',serif",fontSize:20,color:C.gold}},"◈ FINVAULT"),
-          e("span",{style:{fontSize:10,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace",marginLeft:8}},"v5.7"),
+          e("span",{style:{fontSize:10,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace",marginLeft:8}},"v5.8"),
           e("span",{style:{marginLeft:12,fontSize:11,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace"}},"PERSONAL WEALTH OS")
         ),
         e("div",{style:{display:"flex",gap:2,background:"rgba(255,255,255,0.03)",borderRadius:10,padding:4,border:"1px solid rgba(255,255,255,0.06)"}},
@@ -925,7 +936,14 @@ function App(){
             e("div",{style:{fontSize:26,fontWeight:700,color:C.text,fontFamily:"'Playfair Display',serif",marginBottom:4}},unvestedValue!=null?fmt(unvestedValue):"—"),
             e("div",{style:{fontSize:12,color:C.textDim,marginTop:4}},googPrice?"$"+googPrice.toFixed(2)+" per share":"Set price on vested card ↑")
           ),
-          e(KPI,{label:"Net Savings",value:fmt(mNet),trend:mNet,sub:mInc>0?Math.round((mNet/mInc)*100)+"% savings rate":"",color:C.purple,icon:"💰"}),
+          e(Card,{style:{position:"relative",overflow:"hidden"}},
+            e("div",{style:{position:"absolute",top:-20,right:-20,width:100,height:100,background:"radial-gradient(circle,#F7931A20,transparent 70%)",pointerEvents:"none"}}),
+            e("div",{style:{fontSize:20,marginBottom:6}},"₿"),
+            e("div",{style:{fontSize:10,letterSpacing:2.5,color:C.textDim,textTransform:"uppercase",fontFamily:"'JetBrains Mono',monospace",marginBottom:8}},"Bitcoin ("+BTC_HOLDINGS+" BTC)"),
+            e("div",{style:{fontSize:26,fontWeight:700,color:C.text,fontFamily:"'Playfair Display',serif",marginBottom:4}},btcPrice?fmt(BTC_HOLDINGS*btcPrice):"—"),
+            btcPrice?e("div",{style:{fontSize:12,color:C.textDim,fontFamily:"'JetBrains Mono',monospace"}},"$"+btcPrice.toLocaleString("en-US",{maximumFractionDigits:0})+" per BTC · live"):
+            e("div",{style:{fontSize:11,color:C.textMuted}},"Fetching live price...")
+          ),
           e(KPI,{label:"Net Worth",value:fmt(netWorthNow),sub:"Bank + Portfolio",color:C.orange,icon:"🏆"})
         ),
         e(Card,{style:{marginBottom:20,padding:"16px 20px"}},

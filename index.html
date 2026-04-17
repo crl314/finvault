@@ -958,7 +958,7 @@ function App(){
       e("div",{style:{maxWidth:1400,margin:"0 auto",display:"flex",alignItems:"center",justifyContent:"space-between",height:64}},
         e("div",null,
           e("span",{style:{fontFamily:"'Playfair Display',serif",fontSize:20,color:C.gold}},"◈ FINVAULT"),
-          e("span",{style:{fontSize:10,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace",marginLeft:8}},"v6.6"),
+          e("span",{style:{fontSize:10,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace",marginLeft:8}},"v6.7"),
           e("span",{style:{marginLeft:12,fontSize:11,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace"}},"PERSONAL WEALTH OS")
         ),
         e("div",{style:{display:"flex",gap:2,background:"rgba(255,255,255,0.03)",borderRadius:10,padding:4,border:"1px solid rgba(255,255,255,0.06)"}},
@@ -1132,32 +1132,6 @@ function App(){
             })
           ):null
         ),
-        // Portfolio Audit Trail (last 5 changes)
-        portfolioAudit.length>0?e(Card,{style:{marginBottom:20}},
-          e("div",{style:{fontSize:11,color:C.textMuted,letterSpacing:2,textTransform:"uppercase",fontFamily:"'JetBrains Mono',monospace",marginBottom:12}},"📋 Portfolio Change Log"),
-          e("div",{style:{maxHeight:220,overflowY:"auto"}},
-            portfolioAudit.slice(0,5).map(function(entry,i){
-              var actionColors={OPENED:C.teal,ADDED:C.teal,TRIMMED:C.orange,CLOSED:C.red};
-              return e("div",{key:i,style:{padding:"10px 0",borderBottom:i<Math.min(portfolioAudit.length,5)-1?"1px solid rgba(255,255,255,0.05)":"none"}},
-                e("div",{style:{display:"flex",justifyContent:"space-between",marginBottom:6}},
-                  e("span",{style:{fontSize:11,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace"}},entry.date+" · "+entry.time),
-                  e("span",{style:{fontSize:10,color:C.textMuted}},entry.account)
-                ),
-                e("div",{style:{display:"flex",flexWrap:"wrap",gap:6}},
-                  entry.changes.map(function(c,j){
-                    var ac=actionColors[c.action]||C.textDim;
-                    return e("div",{key:j,style:{display:"flex",alignItems:"center",gap:6,padding:"3px 8px",background:"rgba(255,255,255,0.03)",borderLeft:"2px solid "+ac,borderRadius:4}},
-                      e("span",{style:{fontSize:11,fontWeight:700,color:C.gold,fontFamily:"'JetBrains Mono',monospace"}},c.sym),
-                      e("span",{style:{fontSize:10,color:ac,fontWeight:600}},c.action),
-                      e("span",{style:{fontSize:10,color:C.textMuted}},c.note)
-                    );
-                  })
-                )
-              );
-            })
-          )
-        ):null,
-
         // Upcoming Earnings & Events
         (function(){
           var upcoming=(events||[]).filter(function(ev){return ev.date>=new Date().toISOString().slice(0,10);}).sort(function(a,b){return a.date.localeCompare(b.date);}).slice(0,5);

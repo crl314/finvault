@@ -600,6 +600,8 @@ function App(){
   var [briefPortfolioLoading,setBriefPortfolioLoading]=useState(false);
   var [briefMarketTime,setBriefMarketTime]=useState(null);
   var [briefPortfolioTime,setBriefPortfolioTime]=useState(null);
+  var [selectedCategory,setSelectedCategory]=useState(null);
+  var [portfolioAudit,setPortfolioAudit]=useState(function(){try{var r=localStorage.getItem("fv_portfolio_audit");return r?JSON.parse(r):[];}catch(e){return [];}});
   var [txTypeFilter,setTxTypeFilter]=useState("All");
   var [txCatFilter,setTxCatFilter]=useState("All");
   var [txDateFrom,setTxDateFrom]=useState("");
@@ -607,8 +609,56 @@ function App(){
   var [newG,setNewG]=useState({name:"",target:"",current:"",deadline:"",icon:"🎯"});
 
   var doImport=useCallback(function(parsed,acct){
+    // Audit trail: compare portfolio imports to previous
+    var isPortfolioImport=parsed.some(function(p){return p.type==="investment";});
+    if(isPortfolioImport){
+      var prevHoldings={};
+      try{var prev=localStorage.getItem("fv_tx");if(prev){var pt=JSON.parse(prev);pt.filter(function(t){return t.account===acct&&t.type==="investment";}).forEach(function(t){prevHoldings[t.symbol]={cost:t.amount,currentValue:t.currentValue||0};});}}catch(e){}
+      var newHoldings={};
+      parsed.filter(function(t){return t.type==="investment";}).forEach(function(t){newHoldings[t.symbol]={cost:t.amount,currentValue:t.currentValue||0};});
+      var changes=[];
+      Object.keys(newHoldings).forEach(function(sym){
+        if(!prevHoldings[sym])changes.push({sym:sym,action:"OPENED",note:"New position, $"+newHoldings[sym].cost.toFixed(0)+" cost"});
+        else{
+          var deltaPct=prevHoldings[sym].cost>0?((newHoldings[sym].cost-prevHoldings[sym].cost)/prevHoldings[sym].cost*100):0;
+          if(Math.abs(deltaPct)>=10){
+            changes.push({sym:sym,action:deltaPct>0?"ADDED":"TRIMMED",note:(deltaPct>0?"+":"")+deltaPct.toFixed(0)+"% cost basis change"});
+          }
+        }
+      });
+      Object.keys(prevHoldings).forEach(function(sym){
+        if(!newHoldings[sym])changes.push({sym:sym,action:"CLOSED",note:"Position exited"});
+      });
+      if(changes.length>0){
+        var auditEntry={date:new Date().toISOString().slice(0,10),time:new Date().toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit"}),account:acct,changes:changes};
+        setPortfolioAudit(function(prev){var u=[auditEntry].concat(prev).slice(0,50);localStorage.setItem("fv_portfolio_audit",JSON.stringify(u));return u;});
+      }
+    }
+    // Auto-tag pass: match transactions against recurring expense names
+    var recList=[];try{var r=localStorage.getItem("fv_recurring");if(r)recList=JSON.parse(r);}catch(e){}
+    var tagged=parsed.map(function(t){
+      if(t.type!=="expense")return t;
+      var descU=(t.description||"").toUpperCase();
+      for(var i=0;i<recList.length;i++){
+        var recItem=recList[i];
+        var nameU=recItem.name.toUpperCase();
+        // Match key words from recurring name in description
+        var keyWords=nameU.split(/\s+/).filter(function(w){return w.length>3&&["THE","AND","WITH","FOR"].indexOf(w)===-1;});
+        var hit=keyWords.length>0&&keyWords.some(function(kw){return descU.indexOf(kw)!==-1;});
+        // Special cases for credit cards and common bills
+        if(nameU.indexOf("ROBINHOOD")!==-1&&descU.indexOf("ROBINHOOD")!==-1)hit=true;
+        if(nameU.indexOf("BOFA")!==-1&&(descU.indexOf("BANK OF AMERICA")!==-1||descU.indexOf("BKOFAMERICA")!==-1))hit=true;
+        if(nameU.indexOf("COMED")!==-1&&descU.indexOf("COMED")!==-1)hit=true;
+        if(nameU.indexOf("AT&T")!==-1&&(descU.indexOf("AT&T")!==-1||descU.indexOf("ATT*")!==-1))hit=true;
+        if(nameU.indexOf("NETFLIX")!==-1&&descU.indexOf("NETFLIX")!==-1)hit=true;
+        if(hit){
+          return Object.assign({},t,{recurring:recItem.name,recurringId:recItem.id,category:recItem.category||t.category});
+        }
+      }
+      return t;
+    });
     setTx(function(prev){
-      var u=prev.filter(function(x){return x.account!==acct;}).concat(parsed);
+      var u=prev.filter(function(x){return x.account!==acct;}).concat(tagged);
       save("fv_tx",u);return u;
     });
   },[]);
@@ -619,12 +669,33 @@ function App(){
     var accounts=Object.keys(AI);
     var reparsed=0;
     var newTx=[];
+    var recList=[];try{var r=localStorage.getItem("fv_recurring");if(r)recList=JSON.parse(r);}catch(e){}
     accounts.forEach(function(acct){
       try{
         var raw=localStorage.getItem("fv_raw_"+acct);
         if(!raw)return;
         var parsed=parse(raw,acct);
-        if(parsed.length){newTx=newTx.concat(parsed);reparsed++;}
+        if(parsed.length){
+          // Apply auto-tag pass
+          var tagged=parsed.map(function(t){
+            if(t.type!=="expense")return t;
+            var descU=(t.description||"").toUpperCase();
+            for(var i=0;i<recList.length;i++){
+              var recItem=recList[i];
+              var nameU=recItem.name.toUpperCase();
+              var keyWords=nameU.split(/\s+/).filter(function(w){return w.length>3&&["THE","AND","WITH","FOR"].indexOf(w)===-1;});
+              var hit=keyWords.length>0&&keyWords.some(function(kw){return descU.indexOf(kw)!==-1;});
+              if(nameU.indexOf("ROBINHOOD")!==-1&&descU.indexOf("ROBINHOOD")!==-1)hit=true;
+              if(nameU.indexOf("BOFA")!==-1&&(descU.indexOf("BANK OF AMERICA")!==-1||descU.indexOf("BKOFAMERICA")!==-1))hit=true;
+              if(nameU.indexOf("COMED")!==-1&&descU.indexOf("COMED")!==-1)hit=true;
+              if(nameU.indexOf("AT&T")!==-1&&(descU.indexOf("AT&T")!==-1||descU.indexOf("ATT*")!==-1))hit=true;
+              if(nameU.indexOf("NETFLIX")!==-1&&descU.indexOf("NETFLIX")!==-1)hit=true;
+              if(hit)return Object.assign({},t,{recurring:recItem.name,recurringId:recItem.id,category:recItem.category||t.category});
+            }
+            return t;
+          });
+          newTx=newTx.concat(tagged);reparsed++;
+        }
       }catch(x){}
     });
     if(!reparsed){alert("No saved CSVs found. Please re-import your files.");return;}
@@ -649,25 +720,26 @@ function App(){
     var fetchable=syms.filter(function(s){return !NO_PRICE[s]&&s&&s.length<10;});
     if(!fetchable.length){setPLoad(false);return;}
     setPLoad(true);
-    try{
-      // Batch fetch — Finnhub requires one call per symbol but is fast
-      var results=await Promise.allSettled(fetchable.map(async function(sym){
-        var res=await fetch("https://finnhub.io/api/v1/quote?symbol="+sym+"&token="+FINNHUB_KEY);
-        if(!res.ok)return null;
-        var d=await res.json();
-        // d.c = current price, d.dp = % change, d.pc = prev close
-        if(!d||!d.c||d.c===0)return null;
-        return [sym,{price:d.c,change:d.dp,prevClose:d.pc}];
-      }));
-      var newPrices={};
-      results.forEach(function(r){
-        if(r.status==="fulfilled"&&r.value){newPrices[r.value[0]]=r.value[1];}
-      });
-      if(Object.keys(newPrices).length>0){
-        setPrices(function(prev){return Object.assign({},prev,newPrices);});
+    // Batch in chunks of 5, 250ms delay between chunks to avoid rate limits
+    var chunks=[];
+    for(var i=0;i<fetchable.length;i+=5)chunks.push(fetchable.slice(i,i+5));
+    var allResults={};
+    function fetchOne(sym){
+      return fetch("https://finnhub.io/api/v1/quote?symbol="+sym+"&token="+FINNHUB_KEY).then(function(r){return r.ok?r.json():null;}).then(function(d){if(!d||!d.c||d.c===0)return null;return [sym,{price:d.c,change:d.dp,prevClose:d.pc}];}).catch(function(){return null;});
+    }
+    function runChunks(idx){
+      if(idx>=chunks.length){
+        if(Object.keys(allResults).length>0)setPrices(function(prev){return Object.assign({},prev,allResults);});
+        setPLoad(false);
+        return;
       }
-    }catch(e){console.warn("Finnhub fetch error:",e);}
-    setPLoad(false);
+      Promise.all(chunks[idx].map(fetchOne)).then(function(results){
+        results.forEach(function(r){if(r)allResults[r[0]]=r[1];});
+        if(idx<chunks.length-1){setTimeout(function(){runChunks(idx+1);},250);}
+        else{runChunks(idx+1);}
+      });
+    }
+    runChunks(0);
   },[]);
 
   // Auto-fetch Fear & Greed from alternative.me (no key needed, CORS enabled)
@@ -817,7 +889,8 @@ function App(){
   var cf=Object.values(byMo).sort(function(a,b){return a.month.localeCompare(b.month);}).slice(-6).map(function(m){return Object.assign({},m,{month:new Date(m.month+"-15").toLocaleDateString("en-US",{month:"short"})});});
   var hByAcc=Object.entries(grp(holdings,"account")).map(function(x){return{name:x[0],value:x[1].reduce(function(s,h){return s+(h.currentValue||h.value);},0)};});
   var totalPortfolioValue=holdings.reduce(function(s,h){return s+(h.currentValue||h.value);},0);
-  var netWorthNow=(bankBal||0)+totalPortfolioValue;
+  var HYS_BALANCE=3055;
+  var netWorthNow=(bankBal||0)+totalPortfolioValue+HYS_BALANCE+(btcPrice?BTC_HOLDINGS*btcPrice:0);
   // Build monthly net worth from cumulative invested + bank balance over time
   var nwByMo=Object.values(byMo).sort(function(a,b){return a.month.localeCompare(b.month);}).map(function(m,i,arr){
     var cumSaved=arr.slice(0,i+1).reduce(function(s,x){return s+(x.income-x.expenses);},0);
@@ -863,11 +936,11 @@ function App(){
     e("div",{style:{position:"fixed",inset:0,pointerEvents:"none",zIndex:0,background:"radial-gradient(ellipse 80% 50% at 20% 0%,rgba(255,193,80,0.04),transparent 60%)"}}),
 
     // Header
-    e("div",{style:{position:"sticky",top:0,zIndex:100,borderBottom:"1px solid "+C.border,background:"rgba(7,11,20,0.95)",backdropFilter:"blur(20px)",padding:"0 32px"}},
+    e("div",{style:{position:"sticky",top:0,zIndex:100,borderBottom:"1px solid "+C.border,background:theme==="dark"?"rgba(7,11,20,0.95)":"rgba(248,248,246,0.95)",backdropFilter:"blur(20px)",padding:"0 32px"}},
       e("div",{style:{maxWidth:1400,margin:"0 auto",display:"flex",alignItems:"center",justifyContent:"space-between",height:64}},
         e("div",null,
           e("span",{style:{fontFamily:"'Playfair Display',serif",fontSize:20,color:C.gold}},"◈ FINVAULT"),
-          e("span",{style:{fontSize:10,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace",marginLeft:8}},"v5.8"),
+          e("span",{style:{fontSize:10,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace",marginLeft:8}},"v6.0"),
           e("span",{style:{marginLeft:12,fontSize:11,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace"}},"PERSONAL WEALTH OS")
         ),
         e("div",{style:{display:"flex",gap:2,background:"rgba(255,255,255,0.03)",borderRadius:10,padding:4,border:"1px solid rgba(255,255,255,0.06)"}},
@@ -875,6 +948,17 @@ function App(){
         ),
         e("div",{style:{display:"flex",alignItems:"center",gap:12}},
           e("span",{style:{fontSize:12,color:C.textDim,fontFamily:"'JetBrains Mono',monospace"}},tx.length+" records ",e("span",{style:{color:C.teal}},"● saved")),
+          e("button",{onClick:function(){setTheme(theme==="dark"?"light":"dark");},style:{fontSize:14,background:"transparent",border:"1px solid "+C.border,borderRadius:6,color:C.textDim,padding:"3px 8px",cursor:"pointer"}},theme==="dark"?"☀️":"🌙"),
+          e("button",{onClick:function(){
+            // Generate snapshot HTML export
+            var d=new Date().toLocaleDateString("en-US");
+            var h=holdings.map(function(x){var g=x.cost>0?((x.currentValue-x.cost)/x.cost*100).toFixed(1):"0";return "<tr><td>"+x.symbol+"</td><td>"+(x.name||"")+"</td><td>$"+x.cost.toFixed(0)+"</td><td>$"+(x.currentValue||0).toFixed(0)+"</td><td>"+g+"%</td></tr>";}).join("");
+            var html='<!DOCTYPE html><html><head><title>FINVAULT Snapshot '+d+'</title><style>body{font-family:Arial,sans-serif;padding:40px;max-width:900px;margin:auto}h1{color:#B8862F}table{width:100%;border-collapse:collapse;margin:20px 0}td,th{padding:8px;border-bottom:1px solid #ddd;text-align:left}th{background:#f5f5f5}.metric{display:inline-block;padding:10px 20px;background:#f9f9f9;border-radius:8px;margin:5px}</style></head><body><h1>◈ FINVAULT Portfolio Snapshot</h1><p>'+d+'</p><div><div class="metric"><strong>Net Worth:</strong> '+fmt(netWorthNow)+'</div><div class="metric"><strong>Holdings:</strong> '+holdings.length+'</div><div class="metric"><strong>BTC:</strong> '+BTC_HOLDINGS+' ('+ (btcPrice?fmt(BTC_HOLDINGS*btcPrice):"—")+')</div></div><h2>Holdings</h2><table><tr><th>Symbol</th><th>Name</th><th>Cost</th><th>Value</th><th>P/L</th></tr>'+h+'</table><p style="margin-top:40px;color:#888;font-size:11px">Generated from FINVAULT · '+new Date().toLocaleString()+'</p></body></html>';
+            var blob=new Blob([html],{type:"text/html"});
+            var url=URL.createObjectURL(blob);
+            var a=document.createElement("a");a.href=url;a.download="finvault-snapshot-"+new Date().toISOString().slice(0,10)+".html";a.click();
+            setTimeout(function(){URL.revokeObjectURL(url);},1000);
+          },style:{fontSize:11,background:"transparent",border:"1px solid "+C.border,borderRadius:6,color:C.textDim,padding:"3px 8px",cursor:"pointer",fontFamily:"'JetBrains Mono',monospace"}},"⬇ export"),
           e("button",{onClick:reparse,style:{fontSize:11,background:"transparent",border:"1px solid "+C.teal,borderRadius:6,color:C.teal,padding:"3px 8px",fontFamily:"'JetBrains Mono',monospace"}},"↻ re-parse"),
           e("button",{onClick:clearAll,style:{fontSize:11,background:"transparent",border:"1px solid "+C.border,borderRadius:6,color:C.textMuted,padding:"3px 8px"}},"reset")
         )
@@ -944,7 +1028,7 @@ function App(){
             btcPrice?e("div",{style:{fontSize:12,color:C.textDim,fontFamily:"'JetBrains Mono',monospace"}},"$"+btcPrice.toLocaleString("en-US",{maximumFractionDigits:0})+" per BTC · live"):
             e("div",{style:{fontSize:11,color:C.textMuted}},"Fetching live price...")
           ),
-          e(KPI,{label:"Net Worth",value:fmt(netWorthNow),sub:"Bank + Portfolio",color:C.orange,icon:"🏆"})
+          e(KPI,{label:"Net Worth",value:fmt(netWorthNow),sub:"Bank + Portfolio + HYS + BTC",color:C.orange,icon:"🏆"})
         ),
         e(Card,{style:{marginBottom:20,padding:"16px 20px"}},
           e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:12}},
@@ -1002,6 +1086,60 @@ function App(){
             })
           ):null
         ),
+        // Portfolio Audit Trail (last 5 changes)
+        portfolioAudit.length>0?e(Card,{style:{marginBottom:20}},
+          e("div",{style:{fontSize:11,color:C.textMuted,letterSpacing:2,textTransform:"uppercase",fontFamily:"'JetBrains Mono',monospace",marginBottom:12}},"📋 Portfolio Change Log"),
+          e("div",{style:{maxHeight:220,overflowY:"auto"}},
+            portfolioAudit.slice(0,5).map(function(entry,i){
+              var actionColors={OPENED:C.teal,ADDED:C.teal,TRIMMED:C.orange,CLOSED:C.red};
+              return e("div",{key:i,style:{padding:"10px 0",borderBottom:i<Math.min(portfolioAudit.length,5)-1?"1px solid rgba(255,255,255,0.05)":"none"}},
+                e("div",{style:{display:"flex",justifyContent:"space-between",marginBottom:6}},
+                  e("span",{style:{fontSize:11,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace"}},entry.date+" · "+entry.time),
+                  e("span",{style:{fontSize:10,color:C.textMuted}},entry.account)
+                ),
+                e("div",{style:{display:"flex",flexWrap:"wrap",gap:6}},
+                  entry.changes.map(function(c,j){
+                    var ac=actionColors[c.action]||C.textDim;
+                    return e("div",{key:j,style:{display:"flex",alignItems:"center",gap:6,padding:"3px 8px",background:"rgba(255,255,255,0.03)",borderLeft:"2px solid "+ac,borderRadius:4}},
+                      e("span",{style:{fontSize:11,fontWeight:700,color:C.gold,fontFamily:"'JetBrains Mono',monospace"}},c.sym),
+                      e("span",{style:{fontSize:10,color:ac,fontWeight:600}},c.action),
+                      e("span",{style:{fontSize:10,color:C.textMuted}},c.note)
+                    );
+                  })
+                )
+              );
+            })
+          )
+        ):null,
+
+        // Upcoming Earnings & Events
+        (function(){
+          var upcoming=(events||[]).filter(function(ev){return ev.date>=new Date().toISOString().slice(0,10);}).sort(function(a,b){return a.date.localeCompare(b.date);}).slice(0,5);
+          if(upcoming.length===0)return null;
+          return e(Card,{style:{marginBottom:20}},
+            e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}},
+              e("div",{style:{fontSize:11,color:C.textMuted,letterSpacing:2,textTransform:"uppercase",fontFamily:"'JetBrains Mono',monospace"}},"📅 Upcoming Earnings & Events"),
+              e("button",{onClick:function(){setTab("tracker");setTrackerTab("timeline");},style:{fontSize:10,color:C.gold,background:"transparent",border:"none",cursor:"pointer"}},"View all →")
+            ),
+            e("div",{style:{display:"grid",gridTemplateColumns:"repeat("+Math.min(upcoming.length,5)+",1fr)",gap:10}},
+              upcoming.map(function(ev,i){
+                var daysUntil=Math.round((new Date(ev.date+"T12:00:00")-new Date())/(1000*60*60*24));
+                var typeColor={earnings:"#378ADD",catalyst:"#EF9F27",macro:"#A78BFA",risk:"#E24B4A"}[ev.type]||"#888";
+                var urgent=daysUntil<=7;
+                var liveP=prices[ev.sym];
+                return e("div",{key:i,style:{padding:"10px 12px",background:"rgba(255,255,255,0.02)",border:"1px solid "+(urgent?typeColor+"55":C.border),borderRadius:8,borderLeft:"3px solid "+typeColor}},
+                  e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}},
+                    e("span",{style:{fontSize:11,fontWeight:700,color:typeColor,fontFamily:"'JetBrains Mono',monospace"}},ev.sym||"—"),
+                    e("span",{style:{fontSize:10,color:urgent?C.red:C.textMuted,fontWeight:urgent?700:400,fontFamily:"'JetBrains Mono',monospace"}},daysUntil===0?"Today":daysUntil===1?"Tomorrow":"in "+daysUntil+"d")
+                  ),
+                  e("div",{style:{fontSize:12,color:C.text,marginBottom:3,maxWidth:"100%",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}},ev.title),
+                  e("div",{style:{fontSize:10,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace"}},new Date(ev.date+"T12:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric"})+(liveP?" · $"+liveP.price.toFixed(2):""))
+                );
+              })
+            )
+          );
+        })(),
+
         e("div",{style:{display:"grid",gridTemplateColumns:"2fr 1fr",gap:20,marginBottom:20}},
           e(Card,null,
             e(SecTitle,{action:e("span",{style:{fontSize:13,color:C.gold,fontFamily:"'JetBrains Mono',monospace",fontWeight:600}},fmt(netWorthNow))},"Net Worth Over Time"),
@@ -1022,10 +1160,50 @@ function App(){
           e(Card,null,e(SecTitle,null,"Income vs Expenses"),
             cf.length>0?e(BarChart,{data:cf,keys:["income","expenses","invested"],colors:[C.teal,C.red,C.gold],height:200}):e("div",{style:{textAlign:"center",padding:40,color:C.textDim}},"Import transactions to see cash flow")
           ),
-          e(Card,null,e(SecTitle,null,"Spending by Category"),
+          e(Card,null,
+            e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}},
+              e(SecTitle,null,selectedCategory?selectedCategory+" — Monthly Trend":"Spending by Category"),
+              selectedCategory?e("button",{onClick:function(){setSelectedCategory(null);},style:{fontSize:11,color:C.gold,background:"transparent",border:"none",cursor:"pointer"}},"← Back"):null
+            ),
+            selectedCategory?(function(){
+              // Build monthly trend for selected category
+              var catTx=fil.filter(function(t){return t.type==="expense"&&t.category===selectedCategory;});
+              var byMo={};
+              catTx.forEach(function(t){var mo=t.date.slice(0,7);if(!byMo[mo])byMo[mo]=0;byMo[mo]+=t.amount;});
+              var moArr=Object.keys(byMo).sort().slice(-6).map(function(m){return {month:new Date(m+"-15").toLocaleDateString("en-US",{month:"short"}),value:byMo[m]};});
+              var total=catTx.reduce(function(s,t){return s+t.amount;},0);
+              var avg=moArr.length>0?total/moArr.length:0;
+              var latest=moArr.length>0?moArr[moArr.length-1].value:0;
+              var prev=moArr.length>1?moArr[moArr.length-2].value:0;
+              var momChange=prev>0?((latest-prev)/prev*100):0;
+              return e("div",null,
+                e("div",{style:{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:14}},
+                  e("div",{style:{padding:"10px 12px",background:"rgba(255,255,255,0.03)",borderRadius:8}},
+                    e("div",{style:{fontSize:10,color:C.textMuted,letterSpacing:1}},"LATEST MONTH"),
+                    e("div",{style:{fontSize:16,fontWeight:700,color:C.gold,fontFamily:"'Playfair Display',serif"}},fmt(latest))
+                  ),
+                  e("div",{style:{padding:"10px 12px",background:"rgba(255,255,255,0.03)",borderRadius:8}},
+                    e("div",{style:{fontSize:10,color:C.textMuted,letterSpacing:1}},"AVG / MO"),
+                    e("div",{style:{fontSize:16,fontWeight:700,color:C.text,fontFamily:"'Playfair Display',serif"}},fmt(avg))
+                  ),
+                  e("div",{style:{padding:"10px 12px",background:"rgba(255,255,255,0.03)",borderRadius:8}},
+                    e("div",{style:{fontSize:10,color:C.textMuted,letterSpacing:1}},"VS LAST MO"),
+                    e("div",{style:{fontSize:16,fontWeight:700,color:momChange>=0?C.red:C.teal,fontFamily:"'Playfair Display',serif"}},(momChange>=0?"+":"")+momChange.toFixed(0)+"%")
+                  )
+                ),
+                moArr.length>0?e(BarChart,{data:moArr,keys:["value"],colors:[C.gold],height:140}):null,
+                e("div",{style:{marginTop:14,maxHeight:180,overflowY:"auto"}},
+                  e("div",{style:{fontSize:10,color:C.textMuted,letterSpacing:1,marginBottom:6}},"RECENT TRANSACTIONS"),
+                  catTx.slice(0,10).map(function(t,i){return e("div",{key:i,style:{display:"flex",justifyContent:"space-between",padding:"5px 0",borderBottom:"1px solid rgba(255,255,255,0.04)",fontSize:11}},
+                    e("span",{style:{color:C.textDim}},fmtD(t.date)+" · "+t.description.slice(0,30)),
+                    e("span",{style:{color:C.red,fontFamily:"'JetBrains Mono',monospace"}},fmt(t.amount))
+                  );})
+                )
+              );
+            })():
             expCat.length>0?e("div",{style:{display:"flex",alignItems:"center",gap:16}},
               e(DonutChart,{data:expCat.slice(0,7),size:140}),
-              e("div",{style:{flex:1}},expCat.slice(0,7).map(function(cat,i){return e("div",{key:cat.name,style:{display:"flex",justifyContent:"space-between",marginBottom:7}},
+              e("div",{style:{flex:1}},expCat.slice(0,7).map(function(cat,i){return e("div",{key:cat.name,onClick:function(){setSelectedCategory(cat.name);},style:{display:"flex",justifyContent:"space-between",marginBottom:7,cursor:"pointer",padding:"3px 6px",borderRadius:6,transition:"background 0.15s"},onMouseOver:function(ev){ev.currentTarget.style.background="rgba(255,255,255,0.04)";},onMouseOut:function(ev){ev.currentTarget.style.background="transparent";}},
                 e("div",{style:{display:"flex",alignItems:"center",gap:7}},e("div",{style:{width:7,height:7,borderRadius:"50%",background:PC[i%PC.length]}}),e("span",{style:{fontSize:12,color:C.textDim}},cat.name)),
                 e("span",{style:{fontSize:12,fontFamily:"'JetBrains Mono',monospace",color:C.text}},fmt(cat.value))
               );}))
@@ -1126,7 +1304,10 @@ function App(){
                 var col=t.type==="income"?C.teal:t.type==="investment"?C.gold:t.type==="transfer"?C.textDim:C.red;
                 return e("tr",{key:t.id,style:{borderBottom:"1px solid rgba(255,255,255,0.028)"},onMouseEnter:function(ev){ev.currentTarget.style.background=C.bgHover;},onMouseLeave:function(ev){ev.currentTarget.style.background="transparent";}},
                   e("td",{style:{padding:"10px 12px",color:C.textDim,fontSize:12,fontFamily:"'JetBrains Mono',monospace",whiteSpace:"nowrap"}},fmtD(t.date)),
-                  e("td",{style:{padding:"10px 12px",color:C.text,fontSize:13,maxWidth:240,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}},t.description),
+                  e("td",{style:{padding:"10px 12px",color:C.text,fontSize:13,maxWidth:280,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}},
+                    t.description,
+                    t.recurring?e("span",{style:{marginLeft:8,fontSize:9,padding:"2px 7px",borderRadius:20,background:"rgba(167,139,250,0.15)",color:"#A78BFA",fontFamily:"'JetBrains Mono',monospace"}},"🔁 "+t.recurring):null
+                  ),
                   e("td",{style:{padding:"10px 12px"}},e("span",{style:{background:"rgba(255,255,255,0.05)",color:C.textDim,padding:"3px 10px",borderRadius:20,fontSize:11,whiteSpace:"nowrap"}},t.category)),
                   e("td",{style:{padding:"10px 12px"}},e("span",{style:{color:AC[t.account],fontSize:12,whiteSpace:"nowrap"}},(AI[t.account]||"")+" "+t.account)),
                   e("td",{style:{padding:"10px 12px",color:col,fontSize:11,textTransform:"capitalize",whiteSpace:"nowrap"}},t.type),

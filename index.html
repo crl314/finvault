@@ -505,6 +505,13 @@ function App(){
   function load(k){try{var s=localStorage.getItem(k);return s?JSON.parse(s):null;}catch(x){return null;}}
   function save(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(x){}}
 
+  var [theme,setTheme]=useState(function(){return localStorage.getItem("fv_theme")||"dark";});
+  useEffect(function(){
+    localStorage.setItem("fv_theme",theme);
+    if(theme==="light"){document.body.style.background="#F8F8F6";document.body.style.color="#1A1A1A";}
+    else{document.body.style.background="#070B14";document.body.style.color="#F0EAD6";}
+  },[theme]);
+
   var [tab,setTab]=useState("overview");
   var [tx,setTx]=useState(function(){return load("fv_tx")||STX;});
   var [goals,setGoals]=useState(function(){return load("fv_goals")||SG;});
@@ -940,7 +947,7 @@ function App(){
       e("div",{style:{maxWidth:1400,margin:"0 auto",display:"flex",alignItems:"center",justifyContent:"space-between",height:64}},
         e("div",null,
           e("span",{style:{fontFamily:"'Playfair Display',serif",fontSize:20,color:C.gold}},"◈ FINVAULT"),
-          e("span",{style:{fontSize:10,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace",marginLeft:8}},"v6.0"),
+          e("span",{style:{fontSize:10,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace",marginLeft:8}},"v6.1"),
           e("span",{style:{marginLeft:12,fontSize:11,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace"}},"PERSONAL WEALTH OS")
         ),
         e("div",{style:{display:"flex",gap:2,background:"rgba(255,255,255,0.03)",borderRadius:10,padding:4,border:"1px solid rgba(255,255,255,0.06)"}},

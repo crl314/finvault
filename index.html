@@ -846,8 +846,8 @@ function App(){
     }).join(", ");
     var notes="";try{var nr=localStorage.getItem("portfolio-notes");if(nr){var ns=JSON.parse(nr);notes=ns.slice(0,3).map(function(n){return n.date+": "+n.text;}).join(" | ");}}catch(e){}
     var today=new Date().toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric",year:"numeric"});
-    var jt='{"macro":"...","actions":[{"rank":1,"action":"...","rationale":"...","urgency":"now"}],"holdings":[{"t":"SYM","th":"theme","c":["c1","c2"],"h":["h1","h2"],"e":"date","k":"watch"}]}';
-    var prompt="Today is "+today+". Portfolio: "+snap+". Notes: "+(notes||"none")+". Macro: Iran war ongoing, Liberation Day tariffs, VIX elevated, Fed on hold. Return ONLY valid JSON matching: "+jt+" Include symbols: NVDA,AXTI,LITE,PLTR,META,HOOD,BE,MU,AGRO,VG,NET,FSLY,GLD,SIVR,IGV,SARK,AEHR. Exactly 5 actions. urgency: now/soon/watch only.";
+    var jt='{"macro":"...","actions":[{"rank":1,"action":"...","rationale":"...","urgency":"now"}],"holdings":[{"t":"SYM","th":"theme","c":["c1","c2"],"h":["h1","h2"],"e":"date","k":"watch"}],"events":[{"date":"YYYY-MM-DD","sym":"SYM","type":"earnings","title":"...","note":"..."}]}';
+    var prompt="Today is "+today+". Portfolio: "+snap+". Notes: "+(notes||"none")+". Macro: Iran war ongoing, Liberation Day tariffs, VIX elevated, Fed on hold. Return ONLY valid JSON matching: "+jt+" Include symbols in holdings: NVDA,AXTI,LITE,PLTR,META,HOOD,BE,MU,AGRO,VG,NET,FSLY,GLD,SIVR,IGV,SARK,AEHR. Exactly 5 actions. urgency: now/soon/watch only. Events: include 6-10 upcoming earnings/catalysts/risks for these positions over next 90 days. Event types: earnings/catalyst/opportunity/risk/macro. Search for recent news (BE-Oracle, AEHR-hyperscaler deals, etc.) and include as catalyst events with accurate dates.";
     fetch("https://api.anthropic.com/v1/messages",{
       method:"POST",
       headers:{"Content-Type":"application/json","x-api-key":ANTHROPIC_KEY,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
@@ -862,6 +862,14 @@ function App(){
       if(parsed.holdings){setAiHoldings(parsed.holdings);localStorage.setItem("fv_ai_holdings",JSON.stringify(parsed.holdings));}
       if(parsed.macro){setAiMacro(parsed.macro);localStorage.setItem("fv_ai_macro",parsed.macro);}
       if(parsed.actions){setAiActions(parsed.actions);localStorage.setItem("fv_ai_actions",JSON.stringify(parsed.actions));}
+      if(parsed.events&&Array.isArray(parsed.events)){
+        // Merge with manual events (keep user-added ones, replace AI-generated ones)
+        var existing=events||[];
+        var manualEvents=existing.filter(function(ev){return ev.id&&String(ev.id).indexOf("ev")===0;});
+        var aiEvents=parsed.events.map(function(ev,i){return Object.assign({},ev,{id:"ai_"+Date.now()+"_"+i});});
+        var merged=aiEvents.concat(manualEvents);
+        saveEvents(merged);
+      }
       var now=new Date().toLocaleString("en-US",{weekday:"short",month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"});
       setTrackerLastUpdated(now);localStorage.setItem("fv_tracker_updated",now);
       setTrackerRefreshing(false);
@@ -950,7 +958,7 @@ function App(){
       e("div",{style:{maxWidth:1400,margin:"0 auto",display:"flex",alignItems:"center",justifyContent:"space-between",height:64}},
         e("div",null,
           e("span",{style:{fontFamily:"'Playfair Display',serif",fontSize:20,color:C.gold}},"◈ FINVAULT"),
-          e("span",{style:{fontSize:10,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace",marginLeft:8}},"v6.4"),
+          e("span",{style:{fontSize:10,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace",marginLeft:8}},"v6.5"),
           e("span",{style:{marginLeft:12,fontSize:11,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace"}},"PERSONAL WEALTH OS")
         ),
         e("div",{style:{display:"flex",gap:2,background:"rgba(255,255,255,0.03)",borderRadius:10,padding:4,border:"1px solid rgba(255,255,255,0.06)"}},
@@ -1827,44 +1835,107 @@ function App(){
           })
         ),
 
-        // TIMELINE TAB
-        trackerTab==="timeline"&&e("div",null,
-          e("div",{style:{fontSize:10,fontWeight:500,letterSpacing:"0.07em",textTransform:"uppercase",color:C.textMuted,marginBottom:10}},"Earnings & catalyst timeline — April → June 2026"),
-          e("div",{style:{background:"rgba(255,255,255,0.03)",border:"1px solid "+C.border,borderRadius:12,padding:"14px 16px",marginBottom:16,overflowX:"auto"}},
-            e("div",{style:{minWidth:520}},
-              e("div",{style:{display:"flex",borderBottom:"1px solid rgba(255,255,255,0.08)",marginBottom:10}},
-                ["April 2026","May 2026","June 2026"].map(function(m){return e("div",{key:m,style:{flex:1,fontSize:11,fontWeight:500,color:C.textMuted,paddingBottom:6,textAlign:"center",borderRight:"1px solid rgba(255,255,255,0.05)"}},m);})
-              ),
-              e("div",{style:{display:"flex",flexDirection:"column",gap:8}},
-                [
-                  {lbl:"AEHR",pos:"9%",type:"earnings",text:"Apr 7 · earnings"},
-                  {lbl:"BE CFO",pos:"17%",type:"catalyst",text:"Apr 13 · new CFO"},
-                  {lbl:"AXTI/LITE",pos:"20%",type:"risk",text:"Apr 14 · 232 report"},
-                  {lbl:"META",pos:"45%",type:"earnings",text:"Apr 29 · earnings"},
-                  {lbl:"PLTR",pos:"53%",type:"earnings",text:"May 4 · earnings"},
-                  {lbl:"NVDA",pos:"57%",type:"earnings",text:"May 20 · earnings"},
-                  {lbl:"MU",pos:"90%",type:"earnings",text:"Jun 24 · earnings"},
-                  {lbl:"232 v2",pos:"91%",type:"risk",text:"Jul 1 · datacenter"}
-                ].map(function(row){
-                  var dotColor={earnings:"#378ADD",catalyst:"#EF9F27",risk:"#E24B4A"}[row.type]||"#888";
-                  var bgColor={earnings:"rgba(55,138,221,0.15)",catalyst:"rgba(239,159,39,0.15)",risk:"rgba(226,75,74,0.15)"}[row.type]||"rgba(255,255,255,0.1)";
-                  return e("div",{key:row.lbl,style:{display:"flex",alignItems:"center",height:30}},
-                    e("div",{style:{fontSize:11,fontWeight:500,width:72,flexShrink:0,color:C.text}},row.lbl),
-                    e("div",{style:{flex:1,position:"relative",height:"100%"}},
-                      e("div",{style:{position:"absolute",left:row.pos,transform:"translateX(-50%)",display:"flex",flexDirection:"column",alignItems:"center",gap:2}},
-                        e("div",{style:{width:9,height:9,borderRadius:"50%",background:dotColor}}),
-                        e("div",{style:{fontSize:9,fontWeight:500,padding:"1px 5px",borderRadius:8,background:bgColor,color:dotColor,whiteSpace:"nowrap"}},row.text)
-                      )
-                    )
-                  );
-                })
-              ),
-              e("div",{style:{display:"flex",flexWrap:"wrap",gap:12,marginTop:10,paddingTop:10,borderTop:"1px solid rgba(255,255,255,0.06)"}},
-                [{color:"#378ADD",label:"Earnings"},{color:"#EF9F27",label:"Catalyst"},{color:"#E24B4A",label:"Risk event"},{color:"#1D9E75",label:"Opportunity"}].map(function(l){
-                  return e("div",{key:l.label,style:{display:"flex",alignItems:"center",gap:4,fontSize:10,color:C.textMuted}},
-                    e("div",{style:{width:7,height:7,borderRadius:"50%",background:l.color}}),l.label);
-                })
+        // TIMELINE TAB (dynamic — reads from events state)
+        trackerTab==="timeline"&&(function(){
+          // Compute timeline window: from today to 3 months out
+          var now=new Date();
+          var startTs=now.getTime();
+          var endTs=new Date(now.getFullYear(),now.getMonth()+3,now.getDate()).getTime();
+          var windowDays=(endTs-startTs)/(1000*60*60*24);
+          // Filter & sort events within window, compute positioning
+          var visible=(events||[]).filter(function(ev){
+            var t=new Date(ev.date+"T12:00:00").getTime();
+            return t>=startTs&&t<=endTs;
+          }).map(function(ev){
+            var t=new Date(ev.date+"T12:00:00").getTime();
+            var pct=((t-startTs)/(endTs-startTs))*100;
+            return Object.assign({},ev,{pct:pct});
+          }).sort(function(a,b){return a.date.localeCompare(b.date);});
+          // Month headers
+          var monthLabels=[];
+          for(var i=0;i<3;i++){
+            var d=new Date(now.getFullYear(),now.getMonth()+i,1);
+            monthLabels.push(d.toLocaleDateString("en-US",{month:"long",year:"numeric"}));
+          }
+          return e("div",null,
+            e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}},
+              e("div",{style:{fontSize:10,fontWeight:500,letterSpacing:"0.07em",textTransform:"uppercase",color:C.textMuted}},"Earnings & catalyst timeline — next 3 months ("+visible.length+" events)"),
+              e("button",{onClick:function(){setTrackerTab("timeline_add");},style:{fontSize:11,padding:"5px 12px",background:"rgba(255,193,80,0.1)",border:"1px solid rgba(255,193,80,0.3)",borderRadius:6,color:C.gold,cursor:"pointer"}},"+ Add event")
+            ),
+            e("div",{style:{background:"rgba(255,255,255,0.03)",border:"1px solid "+C.border,borderRadius:12,padding:"14px 16px",marginBottom:16,overflowX:"auto"}},
+              e("div",{style:{minWidth:520}},
+                e("div",{style:{display:"flex",borderBottom:"1px solid rgba(255,255,255,0.08)",marginBottom:10}},
+                  monthLabels.map(function(m){return e("div",{key:m,style:{flex:1,fontSize:11,fontWeight:500,color:C.textMuted,paddingBottom:6,textAlign:"center",borderRight:"1px solid rgba(255,255,255,0.05)"}},m);})
+                ),
+                visible.length===0?
+                  e("div",{style:{padding:"20px 0",textAlign:"center",color:C.textMuted,fontSize:12}},"No events in the next 3 months. Click ↻ refresh to populate."):
+                  e("div",{style:{display:"flex",flexDirection:"column",gap:8}},
+                    visible.map(function(ev,i){
+                      var dotColor={earnings:"#378ADD",catalyst:"#EF9F27",risk:"#E24B4A",macro:"#A78BFA",opportunity:"#1D9E75"}[ev.type]||"#888";
+                      var bgColor={earnings:"rgba(55,138,221,0.15)",catalyst:"rgba(239,159,39,0.15)",risk:"rgba(226,75,74,0.15)",macro:"rgba(167,139,250,0.15)",opportunity:"rgba(29,158,117,0.15)"}[ev.type]||"rgba(255,255,255,0.1)";
+                      var dateLabel=new Date(ev.date+"T12:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric"});
+                      return e("div",{key:ev.id||i,style:{display:"flex",alignItems:"center",height:30,position:"relative"}},
+                        e("div",{style:{fontSize:11,fontWeight:500,width:84,flexShrink:0,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}},ev.sym||"—"),
+                        e("div",{style:{flex:1,position:"relative",height:"100%"}},
+                          e("div",{title:ev.title+(ev.note?" — "+ev.note:""),style:{position:"absolute",left:Math.max(2,Math.min(98,ev.pct))+"%",transform:"translateX(-50%)",display:"flex",flexDirection:"column",alignItems:"center",gap:2,cursor:"pointer"}},
+                            e("div",{style:{width:9,height:9,borderRadius:"50%",background:dotColor}}),
+                            e("div",{style:{fontSize:9,fontWeight:500,padding:"1px 6px",borderRadius:8,background:bgColor,color:dotColor,whiteSpace:"nowrap"}},dateLabel+" · "+(ev.title||ev.type))
+                          )
+                        ),
+                        e("button",{onClick:function(){saveEvents(events.filter(function(x){return x.id!==ev.id;}));},style:{background:"rgba(255,94,108,0.1)",border:"none",borderRadius:4,color:C.red,padding:"1px 6px",fontSize:10,cursor:"pointer",marginLeft:4,flexShrink:0}},"✕")
+                      );
+                    })
+                  ),
+                e("div",{style:{display:"flex",flexWrap:"wrap",gap:12,marginTop:10,paddingTop:10,borderTop:"1px solid rgba(255,255,255,0.06)"}},
+                  [{color:"#378ADD",label:"Earnings"},{color:"#EF9F27",label:"Catalyst"},{color:"#E24B4A",label:"Risk event"},{color:"#1D9E75",label:"Opportunity"},{color:"#A78BFA",label:"Macro"}].map(function(l){
+                    return e("div",{key:l.label,style:{display:"flex",alignItems:"center",gap:4,fontSize:10,color:C.textMuted}},
+                      e("div",{style:{width:7,height:7,borderRadius:"50%",background:l.color}}),l.label);
+                  })
+                )
               )
+            ),
+            e("div",{style:{marginTop:12,padding:"10px 14px",background:"rgba(62,207,178,0.05)",border:"1px solid rgba(62,207,178,0.15)",borderRadius:8,fontSize:11,color:C.textDim,lineHeight:1.6}},"💡 Weekly refresh auto-generates events from Claude. Add mid-week catalysts manually (e.g. \"BE-Oracle deal\") and they\'ll persist here and on Overview.")
+          );
+        })(),
+
+        // TIMELINE ADD EVENT (mini-tab for adding)
+        trackerTab==="timeline_add"&&e("div",null,
+          e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}},
+            e("div",{style:{fontSize:14,fontWeight:700,color:C.gold}},"+ Add Event"),
+            e("button",{onClick:function(){setTrackerTab("timeline");},style:{fontSize:11,color:C.textMuted,background:"transparent",border:"none",cursor:"pointer"}},"← Back to Timeline")
+          ),
+          e(Card,{style:{maxWidth:500}},
+            e("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}},
+              e("div",null,
+                e("div",{style:{fontSize:10,color:C.textMuted,marginBottom:4}},"DATE"),
+                e("input",{type:"date",value:newEvent.date,onChange:function(ev){setNewEvent(function(p){return Object.assign({},p,{date:ev.target.value});});},style:{width:"100%",background:"rgba(255,255,255,0.06)",border:"1px solid "+C.border,borderRadius:6,color:C.text,fontSize:13,padding:"7px 10px",boxSizing:"border-box"}})
+              ),
+              e("div",null,
+                e("div",{style:{fontSize:10,color:C.textMuted,marginBottom:4}},"TICKER"),
+                e("input",{type:"text",placeholder:"NVDA",value:newEvent.sym,onChange:function(ev){setNewEvent(function(p){return Object.assign({},p,{sym:ev.target.value.toUpperCase()});});},style:{width:"100%",background:"rgba(255,255,255,0.06)",border:"1px solid "+C.border,borderRadius:6,color:C.text,fontSize:13,padding:"7px 10px",boxSizing:"border-box"}})
+              )
+            ),
+            e("div",{style:{marginBottom:10}},
+              e("div",{style:{fontSize:10,color:C.textMuted,marginBottom:4}},"TITLE"),
+              e("input",{type:"text",placeholder:"e.g. BE signs Oracle datacenter deal",value:newEvent.title,onChange:function(ev){setNewEvent(function(p){return Object.assign({},p,{title:ev.target.value});});},style:{width:"100%",background:"rgba(255,255,255,0.06)",border:"1px solid "+C.border,borderRadius:6,color:C.text,fontSize:13,padding:"7px 10px",boxSizing:"border-box"}})
+            ),
+            e("div",{style:{display:"flex",gap:6,marginBottom:10,flexWrap:"wrap"}},
+              ["earnings","catalyst","opportunity","risk","macro"].map(function(t){
+                return e("button",{key:t,onClick:function(){setNewEvent(function(p){return Object.assign({},p,{type:t});});},style:{padding:"5px 12px",borderRadius:20,border:"none",cursor:"pointer",fontSize:11,background:newEvent.type===t?"rgba(255,193,80,0.2)":"rgba(255,255,255,0.05)",color:newEvent.type===t?C.gold:C.textMuted}},t);
+              })
+            ),
+            e("div",{style:{marginBottom:12}},
+              e("div",{style:{fontSize:10,color:C.textMuted,marginBottom:4}},"NOTE (optional)"),
+              e("input",{type:"text",placeholder:"Context on what to watch",value:newEvent.note,onChange:function(ev){setNewEvent(function(p){return Object.assign({},p,{note:ev.target.value});});},style:{width:"100%",background:"rgba(255,255,255,0.06)",border:"1px solid "+C.border,borderRadius:6,color:C.text,fontSize:13,padding:"7px 10px",boxSizing:"border-box"}})
+            ),
+            e("div",{style:{display:"flex",gap:8}},
+              e("button",{onClick:function(){
+                if(!newEvent.date||!newEvent.title)return;
+                saveEvents(events.concat([Object.assign({},newEvent,{id:"ev"+Date.now()})]));
+                setNewEvent({date:"",sym:"",type:"earnings",title:"",note:""});
+                setTrackerTab("timeline");
+              },style:{flex:1,padding:"9px",background:"linear-gradient(135deg,"+C.gold+","+C.goldDim+")",border:"none",borderRadius:7,color:"#07080A",fontWeight:700,fontSize:12,cursor:"pointer"}},"SAVE"),
+              e("button",{onClick:function(){setTrackerTab("timeline");},style:{padding:"9px 16px",background:"rgba(255,255,255,0.06)",border:"1px solid "+C.border,borderRadius:7,color:C.textMuted,fontSize:12,cursor:"pointer"}},"Cancel")
             )
           )
         ),

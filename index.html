@@ -865,7 +865,8 @@ function App(){
     var notes="";try{var nr=localStorage.getItem("portfolio-notes");if(nr){var ns=JSON.parse(nr);notes=ns.slice(0,3).map(function(n){return n.date+": "+n.text;}).join(" | ");}}catch(e){}
     var today=new Date().toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric",year:"numeric"});
     var jt='{"macro":"...","actions":[{"rank":1,"action":"...","rationale":"...","urgency":"now"}],"holdings":[{"t":"SYM","th":"theme","c":["c1","c2"],"h":["h1","h2"],"e":"date","k":"watch"}],"events":[{"date":"YYYY-MM-DD","sym":"SYM","type":"earnings","title":"...","note":"..."}]}';
-    var prompt="Today is "+today+". Portfolio: "+snap+". Notes: "+(notes||"none")+". Macro: Iran war ongoing, Liberation Day tariffs, VIX elevated, Fed on hold. Return ONLY valid JSON matching: "+jt+" Include symbols in holdings: NVDA,AXTI,LITE,PLTR,META,HOOD,BE,MU,AGRO,VG,NET,FSLY,GLD,SIVR,IGV,SARK,AEHR. Exactly 5 actions. urgency: now/soon/watch only. Events: include 6-10 upcoming earnings/catalysts/risks for these positions over next 90 days. Event types: earnings/catalyst/opportunity/risk/macro. Search for recent news (BE-Oracle, AEHR-hyperscaler deals, etc.) and include as catalyst events with accurate dates.";
+    var currentSyms=holdings.map(function(h){return h.symbol;}).join(",");
+    var prompt="Today is "+today+". Portfolio: "+snap+". Notes: "+(notes||"none")+". Macro: Iran war ongoing, Liberation Day tariffs, VIX elevated, Fed on hold. Return ONLY valid JSON matching: "+jt+" Include ALL these symbols in holdings array: "+currentSyms+". Exactly 5 actions. urgency: now/soon/watch only. Events: include 8-12 relevant events (past 30 days + next 90 days) for these positions — earnings, catalysts (deals/contracts/wins), risks, macro. Event types: earnings/catalyst/opportunity/risk/macro. Search for RECENT news (BE-Oracle deal, AEHR-hyperscaler contract, etc.) and include both past wins AND upcoming catalysts with accurate dates.";
     fetch("https://api.anthropic.com/v1/messages",{
       method:"POST",
       headers:{"Content-Type":"application/json","x-api-key":ANTHROPIC_KEY,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
@@ -976,7 +977,7 @@ function App(){
       e("div",{style:{maxWidth:1400,margin:"0 auto",display:"flex",alignItems:"center",justifyContent:"space-between",height:64}},
         e("div",null,
           e("span",{style:{fontFamily:"'Playfair Display',serif",fontSize:20,color:C.gold}},"◈ FINVAULT"),
-          e("span",{style:{fontSize:10,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace",marginLeft:8}},"v6.8"),
+          e("span",{style:{fontSize:10,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace",marginLeft:8}},"v6.9"),
           e("span",{style:{marginLeft:12,fontSize:11,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace"}},"PERSONAL WEALTH OS")
         ),
         e("div",{style:{display:"flex",gap:2,background:"rgba(255,255,255,0.03)",borderRadius:10,padding:4,border:"1px solid rgba(255,255,255,0.06)"}},
@@ -1940,29 +1941,32 @@ function App(){
 
         // TIMELINE TAB (dynamic — reads from events state)
         trackerTab==="timeline"&&(function(){
-          // Compute timeline window: from today to 3 months out
+          // Dynamic timeline window based on events: from earliest event (or 1mo back) to latest (or 3mo forward)
           var now=new Date();
-          var startTs=now.getTime();
-          var endTs=new Date(now.getFullYear(),now.getMonth()+3,now.getDate()).getTime();
-          var windowDays=(endTs-startTs)/(1000*60*60*24);
-          // Filter & sort events within window, compute positioning
-          var visible=(events||[]).filter(function(ev){
-            var t=new Date(ev.date+"T12:00:00").getTime();
-            return t>=startTs&&t<=endTs;
-          }).map(function(ev){
+          var defaultStart=new Date(now.getFullYear(),now.getMonth()-1,1).getTime();
+          var defaultEnd=new Date(now.getFullYear(),now.getMonth()+3,now.getDate()).getTime();
+          var allEventTs=(events||[]).map(function(ev){return new Date(ev.date+"T12:00:00").getTime();});
+          var startTs=allEventTs.length>0?Math.min(defaultStart,Math.min.apply(null,allEventTs)):defaultStart;
+          var endTs=allEventTs.length>0?Math.max(defaultEnd,Math.max.apply(null,allEventTs)):defaultEnd;
+          // Filter & sort all events
+          var visible=(events||[]).map(function(ev){
             var t=new Date(ev.date+"T12:00:00").getTime();
             var pct=((t-startTs)/(endTs-startTs))*100;
             return Object.assign({},ev,{pct:pct});
           }).sort(function(a,b){return a.date.localeCompare(b.date);});
-          // Month headers
+          // Dynamic month headers spanning full window
           var monthLabels=[];
-          for(var i=0;i<3;i++){
-            var d=new Date(now.getFullYear(),now.getMonth()+i,1);
-            monthLabels.push(d.toLocaleDateString("en-US",{month:"long",year:"numeric"}));
+          var startDate=new Date(startTs);
+          var endDate=new Date(endTs);
+          var totalMonths=(endDate.getFullYear()-startDate.getFullYear())*12+(endDate.getMonth()-startDate.getMonth())+1;
+          totalMonths=Math.max(3,Math.min(totalMonths,12));
+          for(var i=0;i<totalMonths;i++){
+            var d=new Date(startDate.getFullYear(),startDate.getMonth()+i,1);
+            monthLabels.push(d.toLocaleDateString("en-US",{month:"short",year:"2-digit"}));
           }
           return e("div",null,
             e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}},
-              e("div",{style:{fontSize:10,fontWeight:500,letterSpacing:"0.07em",textTransform:"uppercase",color:C.textMuted}},"Earnings & catalyst timeline — next 3 months ("+visible.length+" events)"),
+              e("div",{style:{fontSize:10,fontWeight:500,letterSpacing:"0.07em",textTransform:"uppercase",color:C.textMuted}},"Earnings & catalyst timeline — all events ("+visible.length+")"),
               e("button",{onClick:function(){setTrackerTab("timeline_add");},style:{fontSize:11,padding:"5px 12px",background:"rgba(255,193,80,0.1)",border:"1px solid rgba(255,193,80,0.3)",borderRadius:6,color:C.gold,cursor:"pointer"}},"+ Add event")
             ),
             e("div",{style:{background:"rgba(255,255,255,0.03)",border:"1px solid "+C.border,borderRadius:12,padding:"14px 16px",marginBottom:16,overflowX:"auto"}},
@@ -1971,16 +1975,18 @@ function App(){
                   monthLabels.map(function(m){return e("div",{key:m,style:{flex:1,fontSize:11,fontWeight:500,color:C.textMuted,paddingBottom:6,textAlign:"center",borderRight:"1px solid rgba(255,255,255,0.05)"}},m);})
                 ),
                 visible.length===0?
-                  e("div",{style:{padding:"20px 0",textAlign:"center",color:C.textMuted,fontSize:12}},"No events in the next 3 months. Click ↻ refresh to populate."):
+                  e("div",{style:{padding:"20px 0",textAlign:"center",color:C.textMuted,fontSize:12}},"No events yet. Click ↻ refresh to populate or + Add event manually."):
                   e("div",{style:{display:"flex",flexDirection:"column",gap:8}},
                     visible.map(function(ev,i){
+                      var isPast=new Date(ev.date+"T12:00:00").getTime()<Date.now();
                       var dotColor={earnings:"#378ADD",catalyst:"#EF9F27",risk:"#E24B4A",macro:"#A78BFA",opportunity:"#1D9E75"}[ev.type]||"#888";
                       var bgColor={earnings:"rgba(55,138,221,0.15)",catalyst:"rgba(239,159,39,0.15)",risk:"rgba(226,75,74,0.15)",macro:"rgba(167,139,250,0.15)",opportunity:"rgba(29,158,117,0.15)"}[ev.type]||"rgba(255,255,255,0.1)";
+                      var pastStyle=isPast?{opacity:0.55}:{};
                       var dateLabel=new Date(ev.date+"T12:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric"});
                       return e("div",{key:ev.id||i,style:{display:"flex",alignItems:"center",height:30,position:"relative"}},
                         e("div",{style:{fontSize:11,fontWeight:500,width:84,flexShrink:0,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}},ev.sym||"—"),
                         e("div",{style:{flex:1,position:"relative",height:"100%"}},
-                          e("div",{title:ev.title+(ev.note?" — "+ev.note:""),style:{position:"absolute",left:Math.max(2,Math.min(98,ev.pct))+"%",transform:"translateX(-50%)",display:"flex",flexDirection:"column",alignItems:"center",gap:2,cursor:"pointer"}},
+                          e("div",{title:ev.title+(ev.note?" — "+ev.note:""),style:Object.assign({position:"absolute",left:Math.max(2,Math.min(98,ev.pct))+"%",transform:"translateX(-50%)",display:"flex",flexDirection:"column",alignItems:"center",gap:2,cursor:"pointer"},pastStyle)},
                             e("div",{style:{width:9,height:9,borderRadius:"50%",background:dotColor}}),
                             e("div",{style:{fontSize:9,fontWeight:500,padding:"1px 6px",borderRadius:8,background:bgColor,color:dotColor,whiteSpace:"nowrap"}},dateLabel+" · "+(ev.title||ev.type))
                           )
@@ -2047,7 +2053,9 @@ function App(){
         trackerTab==="holdings"&&e("div",null,
           e("div",{style:{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))",gap:10,marginBottom:20}},
             (function(){
-              var H=aiHoldings||[
+              // Build Holdings cards dynamically from current portfolio
+              var portfolioSymbols=holdings.map(function(h){return h.symbol;});
+              var HARDCODED_FALLBACK=[
                 {t:"AXTI",th:"Optics / Photonics",c:["InP backlog $60M+","LITE/CIEN demand pull","Iran ceasefire rally"],h:["Apr 14 · 232 report","Insider selling $28M","Loss-making still"],e:"TBC May",k:"Apr 14 Section 232"},
                 {t:"LITE",th:"Optics / Photonics",c:["NVDA $2B investment","S&P 500 inclusion","Q3 guide $780-830M"],h:["Apr 14 · 232 risk","Jensen copper cable comments","CPO disruption narrative"],e:"TBC May",k:"232 report + Q3 guide"},
                 {t:"AEHR",th:"Optics / Photonics",c:["Silicon photonics win","$14M AI processor order","Small cap upside"],h:["Lumpy revenue","$60-80M forecast critical","Tiny $50M TTM"],e:"TBC May",k:"H2 booking $60-80M?"},
@@ -2066,6 +2074,17 @@ function App(){
                 {t:"IGV",th:"Hedge / Short",c:["AI disrupts SaaS seats","Risk-off macro bid","1x no decay"],h:["Squeeze risk if tech rallies","SaaS beats surprise"],e:"N/A",k:"Core hedge — hold"},
                 {t:"SARK",th:"Hedge / Short",c:["ARKK speculative exposure","Risk-off macro","Iran thesis complement"],h:["2x decay since Jul 2024","ARKK surprise rally risk"],e:"N/A",k:"Monitor decay closely"}
               ];
+              // Build lookup maps for both sources
+              var aiMap={};(aiHoldings||[]).forEach(function(h){aiMap[h.t]=h;});
+              var hardMap={};HARDCODED_FALLBACK.forEach(function(h){hardMap[h.t]=h;});
+              // Produce a card for every symbol in the current portfolio
+              // Priority: AI data > hardcoded fallback > generic placeholder
+              var H=portfolioSymbols.map(function(sym){
+                if(aiMap[sym])return aiMap[sym];
+                if(hardMap[sym])return hardMap[sym];
+                return {t:sym,th:"—",c:["No thesis data yet"],h:["Click ↻ to refresh"],e:"TBC",k:"Refresh tracker for analysis"};
+              });
+              if(H.length===0)return e("div",{style:{padding:"40px 20px",textAlign:"center",color:C.textMuted,fontSize:13}},"Import a portfolio CSV to see holdings here.");
               return H.map(function(h,i){
                 var holding=holdings.find(function(hh){return hh.symbol===h.t;});
                 var pl=holding&&holding.cost>0?((holding.currentValue-holding.cost)/holding.cost*100):null;

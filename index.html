@@ -609,6 +609,7 @@ function App(){
   var [briefPortfolioTime,setBriefPortfolioTime]=useState(null);
   var [selectedCategory,setSelectedCategory]=useState(null);
   var [portfolioAudit,setPortfolioAudit]=useState(function(){try{var r=localStorage.getItem("fv_portfolio_audit");return r?JSON.parse(r):[];}catch(e){return [];}});
+  var [portfolioSnapshots,setPortfolioSnapshots]=useState(function(){try{var r=localStorage.getItem("fv_portfolio_snapshots");return r?JSON.parse(r):[];}catch(e){return [];}});
   var [txTypeFilter,setTxTypeFilter]=useState("All");
   var [txCatFilter,setTxCatFilter]=useState("All");
   var [txDateFrom,setTxDateFrom]=useState("");
@@ -639,6 +640,23 @@ function App(){
       if(changes.length>0){
         var auditEntry={date:new Date().toISOString().slice(0,10),time:new Date().toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit"}),account:acct,changes:changes};
         setPortfolioAudit(function(prev){var u=[auditEntry].concat(prev).slice(0,50);localStorage.setItem("fv_portfolio_audit",JSON.stringify(u));return u;});
+      }
+      // Snapshot: record total portfolio value and by-symbol breakdown
+      var totalVal=0;var bySymbol={};
+      parsed.filter(function(t){return t.type==="investment";}).forEach(function(t){
+        var v=t.currentValue||t.amount||0;
+        totalVal+=v;
+        bySymbol[t.symbol]=(bySymbol[t.symbol]||0)+v;
+      });
+      if(totalVal>0){
+        var snapEntry={date:new Date().toISOString().slice(0,10),account:acct,total:totalVal,bySymbol:bySymbol};
+        setPortfolioSnapshots(function(prev){
+          // Dedupe by date+account (replace same-day snapshot)
+          var filtered=prev.filter(function(s){return !(s.date===snapEntry.date&&s.account===snapEntry.account);});
+          var u=filtered.concat([snapEntry]).sort(function(a,b){return a.date.localeCompare(b.date);});
+          localStorage.setItem("fv_portfolio_snapshots",JSON.stringify(u));
+          return u;
+        });
       }
     }
     // Auto-tag pass: match transactions against recurring expense names
@@ -958,7 +976,7 @@ function App(){
       e("div",{style:{maxWidth:1400,margin:"0 auto",display:"flex",alignItems:"center",justifyContent:"space-between",height:64}},
         e("div",null,
           e("span",{style:{fontFamily:"'Playfair Display',serif",fontSize:20,color:C.gold}},"◈ FINVAULT"),
-          e("span",{style:{fontSize:10,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace",marginLeft:8}},"v6.7"),
+          e("span",{style:{fontSize:10,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace",marginLeft:8}},"v6.8"),
           e("span",{style:{marginLeft:12,fontSize:11,color:C.textMuted,fontFamily:"'JetBrains Mono',monospace"}},"PERSONAL WEALTH OS")
         ),
         e("div",{style:{display:"flex",gap:2,background:"rgba(255,255,255,0.03)",borderRadius:10,padding:4,border:"1px solid rgba(255,255,255,0.06)"}},
@@ -1348,6 +1366,117 @@ function App(){
           e(KPI,{label:"Positions",value:holdings.length,color:C.purple,icon:"🗂️"}),
           e(KPI,{label:"Live Prices",value:pLoad?"Loading...":Object.keys(prices).length+" fetched",color:C.orange,icon:"📡"})
         ),
+
+        // PORTFOLIO CHARTS ROW
+        holdings.length>0?(function(){
+          var BREAKDOWN_CHART=[
+            {label:"Core AI",color:C.gold,symbols:["NVDA","PLTR","META","BE","MU","INTC","ONTO","AMKR"]},
+            {label:"Optics / Photonics",color:"#00CFFF",symbols:["AXTI","LITE","AEHR","PLAB"]},
+            {label:"Commodities",color:"#F4A261",symbols:["AGRO","VG"]},
+            {label:"Metals",color:"#C0C0C0",symbols:["GLD","SIVR"]},
+            {label:"Agentic AI",color:"#A78BFA",symbols:["FSLY","NET"]},
+            {label:"Space",color:"#E879F9",symbols:["BKSY","SPIR"]},
+            {label:"Indexes",color:C.purple,symbols:["SPY","QQQ","XLE"]},
+            {label:"Hedges",color:C.red,symbols:["IGV","SARK","UVXY"]}
+          ];
+          var totalVal=holdings.reduce(function(s,h){return s+(h.currentValue||h.value);},0);
+
+          // Chart 1: Full portfolio donut data
+          var fullPortfolioData=holdings.slice().sort(function(a,b){return (b.currentValue||b.value)-(a.currentValue||a.value);}).map(function(h,i){
+            return {name:h.symbol,value:h.currentValue||h.value,color:PC[i%PC.length]};
+          });
+
+          // Chart 2: Portfolio by Card data
+          var byCardData=BREAKDOWN_CHART.map(function(grp){
+            var val=holdings.filter(function(h){return grp.symbols.indexOf(h.symbol)!==-1;}).reduce(function(s,h){return s+(h.currentValue||h.value);},0);
+            return {name:grp.label,value:val,color:grp.color};
+          }).filter(function(x){return x.value>0;}).sort(function(a,b){return b.value-a.value;});
+
+          // Chart 3: Portfolio evolution (from snapshots, aggregated by date across accounts)
+          var evolution=(function(){
+            var byDate={};
+            (portfolioSnapshots||[]).forEach(function(s){
+              if(!byDate[s.date])byDate[s.date]=0;
+              byDate[s.date]+=s.total;
+            });
+            return Object.keys(byDate).sort().map(function(d){
+              return {month:new Date(d+"T12:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric"}),value:byDate[d]};
+            });
+          })();
+
+          return e("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:24}},
+            // Chart 1: Full portfolio donut
+            e(Card,null,
+              e(SecTitle,{action:e("span",{style:{fontSize:12,color:C.gold,fontFamily:"'JetBrains Mono',monospace",fontWeight:600}},fmt(totalVal))},"📊 Portfolio by Position"),
+              e("div",{style:{display:"flex",alignItems:"center",gap:16}},
+                e(DonutChart,{data:fullPortfolioData.slice(0,12),size:160}),
+                e("div",{style:{flex:1,maxHeight:180,overflowY:"auto"}},
+                  fullPortfolioData.slice(0,12).map(function(item,i){
+                    return e("div",{key:item.name,style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:5}},
+                      e("div",{style:{display:"flex",alignItems:"center",gap:6}},
+                        e("div",{style:{width:7,height:7,borderRadius:"50%",background:item.color}}),
+                        e("span",{style:{fontSize:11,color:C.textDim,fontFamily:"'JetBrains Mono',monospace"}},item.name)
+                      ),
+                      e("span",{style:{fontSize:11,color:C.text,fontFamily:"'JetBrains Mono',monospace"}},((item.value/totalVal)*100).toFixed(1)+"%")
+                    );
+                  })
+                )
+              )
+            ),
+            // Chart 2: Portfolio by Card
+            e(Card,null,
+              e(SecTitle,null,"🗂️ Portfolio by Theme"),
+              byCardData.length>0?e("div",{style:{display:"flex",alignItems:"center",gap:16}},
+                e(DonutChart,{data:byCardData,size:160}),
+                e("div",{style:{flex:1}},
+                  byCardData.map(function(item){
+                    var pct=(item.value/totalVal)*100;
+                    return e("div",{key:item.name,style:{marginBottom:8}},
+                      e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:3}},
+                        e("div",{style:{display:"flex",alignItems:"center",gap:6}},
+                          e("div",{style:{width:7,height:7,borderRadius:"50%",background:item.color}}),
+                          e("span",{style:{fontSize:11,color:C.textDim}},item.name)
+                        ),
+                        e("span",{style:{fontSize:11,color:C.text,fontFamily:"'JetBrains Mono',monospace"}},pct.toFixed(1)+"%")
+                      ),
+                      e("div",{style:{height:3,background:"rgba(255,255,255,0.05)",borderRadius:2,overflow:"hidden"}},
+                        e("div",{style:{width:pct+"%",height:"100%",background:item.color,borderRadius:2}})
+                      )
+                    );
+                  })
+                )
+              ):e("div",{style:{padding:30,textAlign:"center",color:C.textMuted,fontSize:12}},"No themed positions yet")
+            )
+          );
+        })():null,
+
+        // PORTFOLIO EVOLUTION CHART (full width)
+        holdings.length>0&&portfolioSnapshots&&portfolioSnapshots.length>=2?(function(){
+          var byDate={};
+          portfolioSnapshots.forEach(function(s){
+            if(!byDate[s.date])byDate[s.date]=0;
+            byDate[s.date]+=s.total;
+          });
+          var evolution=Object.keys(byDate).sort().map(function(d){
+            return {month:new Date(d+"T12:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric"}),value:byDate[d]};
+          });
+          var first=evolution[0].value;
+          var latest=evolution[evolution.length-1].value;
+          var totalChange=first>0?((latest-first)/first*100):0;
+          return e(Card,{style:{marginBottom:24}},
+            e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}},
+              e("div",{style:{fontSize:14,fontWeight:700,color:C.text}},"📈 Portfolio Evolution"),
+              e("div",{style:{display:"flex",gap:14,alignItems:"baseline"}},
+                e("span",{style:{fontSize:12,color:C.textMuted}},evolution.length+" snapshots · "),
+                e("span",{style:{fontSize:15,fontWeight:700,color:totalChange>=0?C.teal:C.red,fontFamily:"'JetBrains Mono',monospace"}},(totalChange>=0?"+":"")+totalChange.toFixed(1)+"%"),
+                e("span",{style:{fontSize:12,color:C.textMuted}},fmt(first)+" → "+fmt(latest))
+              )
+            ),
+            e(AreaChart,{data:evolution,dataKey:"value",color:C.gold,height:220})
+          );
+        })():(holdings.length>0?e(Card,{style:{marginBottom:24,padding:"20px 24px",background:"rgba(255,193,80,0.04)"}},
+          e("div",{style:{fontSize:13,color:C.textMuted,textAlign:"center"}},"📈 Portfolio Evolution chart will appear after importing 2+ portfolio CSVs (snapshots are recorded on each import).")
+        ):null),
         holdings.length>0?e("div",null,
           (function(){
             // ── Top Movers ──
